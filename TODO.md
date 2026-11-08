@@ -89,6 +89,18 @@ Backlog of things not built yet. Pick from the top when starting something new.
 
 ## Completed recently (v0.1.3)
 
+- [x] **Toolbox Phase 1 — agent mode core + time tool** — per the toolbox plan
+  (`%USERPROFILE%\.opencode\plan\toolbox.md`): new `src/main/toolbox.js`
+  registry/executor (allowlist, unknown-tool + oversized-args rejection,
+  `[toolbox]` log lines), `time` tool (real date/time/day of week).
+  Reply protocol gains an optional `"tool"` key — ai's reader extracts it
+  with a balanced-brace scan at stream end (truncated tool = absent, raw
+  fallback unaffected). `main.js` chat loop: one tool per turn → `chat:tool`
+  toast → TOOL RESULT fed back → second pass with the real answer, typed
+  into the same bubble. Settings → Personality → Agent mode toggle
+  (`agent.enabled`, default OFF — no tools when off). 13 headless reader/
+  executor tests green.
+
 - [x] **Phase 5 — long-term affinity + mood debug panel** — per the plan's
   "memory + soul" section: `affect.affinity` (0–100, starts 30) persisted in
   `%APPDATA%\Kanna\affect.json` (debounced writes, flush on quit, load

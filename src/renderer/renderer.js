@@ -880,6 +880,13 @@ async function runShakeAI(shakes) {
     if (phase !== 'thinking' && !drainTimer) drainTimer = requestAnimationFrame(pace);
   });
 
+  // Toolbox (agent mode): she used a real tool mid-turn (Phase 1: only
+  // time). Toast only — the tool result itself says what happened.
+  window.kanna.onTool((info) => {
+    if (!info?.name) return;
+    toast(`Used her ${info.name} tool…`);
+  });
+
   // The model's directions for this reply. Mood is the first key of the JSON
   // reply, so it lands before any words: she sets her face while still
   // thinking, then speaks in that emotion. A mid-reply mood swap goes live.

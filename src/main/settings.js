@@ -20,6 +20,9 @@ const PROVIDERS = ['openai', 'anthropic', 'gemini', 'custom', 'opencode'];
 const DEFAULT_SETTINGS = {
   provider: 'openai',
   persona: DEFAULT_PERSONA,
+  agent: {
+    enabled: false, // Agent mode: lets the model call real desktop tools (toolbox)
+  },
   openai: { apiKey: '', model: 'gpt-4o-mini' },
   anthropic: { apiKey: '', model: 'claude-sonnet-4-5' },
   gemini: { apiKey: '', model: 'gemini-2.5-flash' },

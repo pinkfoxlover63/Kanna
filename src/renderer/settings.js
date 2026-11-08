@@ -32,6 +32,7 @@
     ttsPiperModel: $('#tts-piper-model'),
     ttsPiperDatadir: $('#tts-piper-datadir'),
     ttsPiperGpu: $('#tts-piper-gpu'),
+    agentEnabled: $('#agent-enabled'),
   };
 
   const PROVIDER_META = {
@@ -267,6 +268,9 @@
     els.key.type = 'password';
     els.eye.innerHTML = '<i class="fa-solid fa-eye"></i>';
 
+    // --- toolbox (agent mode) ---
+    els.agentEnabled.checked = !!(draft.agent && draft.agent.enabled);
+
     // --- TTS ---
     const t = draft.tts || (draft.tts = { provider:'builtin', voice:'', rate:1, pitch:1, muted:false, openaiKey:'', elevenlabsKey:'', azureKey:'', azureRegion:'', googleKey:'', piperCommand:'py', piperModel:'', piperDataDir:'', piperUseGpu:false });
     els.ttsProvider.value = t.provider || 'builtin';
@@ -344,10 +348,12 @@
     draft[p].model = els.model.value.trim();
     if (p === 'custom') draft[p].baseUrl = els.baseUrl.value.trim();
     draft.persona = els.persona.value.trim();
+    draft.agent = { enabled: !!els.agentEnabled.checked };
 
     const saved = await window.kanna.saveSettings({
       provider: p,
       persona: draft.persona,
+      agent: { enabled: !!els.agentEnabled.checked },
       openai: { apiKey: draft.openai.apiKey, model: draft.openai.model },
       anthropic: { apiKey: draft.anthropic.apiKey, model: draft.anthropic.model },
       gemini: { apiKey: draft.gemini.apiKey, model: draft.gemini.model },

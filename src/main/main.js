@@ -10,6 +10,7 @@ const stt = require('./stt');
 const log = require('./log');
 const affect = require('./affect');
 const welcome = require('./welcome');
+const toolbox = require('./toolbox');
 
 function lastUserText(messages) {
   for (let i = messages.length - 1; i >= 0; i--) {
@@ -440,11 +441,44 @@ app.whenReady().then(async () => {
         // window gone mid-stream — nothing to do
       }
     };
-    return ai.runChat(messages, emit).then((result) => {
+    return ai.runChat(messages, emit).then(async (result) => {
+      let finalText = result.text;
+      let stopped = result.stopped;
+      // Toolbox (agent mode, Phase 1): at most one tool per turn. When the
+      // reply carried a tool call, run it and let the model answer again
+      // with the TOOL RESULT in hand. The second pass skips affect triggers
+      // (they already ran on the user's turn) but streams to the same
+      // channels, so the bridge text and the real answer type out as one.
+      if (result.tool) {
+        try {
+          const s = await settings.getSettings();
+          if (s.agent?.enabled) {
+            const call = result.tool;
+            emit('chat:tool', { name: call.name });
+            const exec = toolbox.execute(call.name, call.args);
+            const bridge = (result.text || '').trim();
+            const secondMessages = [
+              ...messages,
+              ...(bridge ? [{ role: 'assistant', content: bridge }] : []),
+              {
+                role: 'user',
+                content: `TOOL RESULT (you called the ${call.name} tool):\n${exec.text}\n`
+                  + 'Answer the user now with the usual JSON reply protocol — no tool key this time.',
+              },
+            ];
+            const second = await ai.runChat(secondMessages, emit, undefined, { noTriggers: true });
+            if (second.text) finalText = second.text;
+            if (second.stopped) stopped = true;
+          }
+        } catch (err) {
+          log.error('[toolbox] tool loop failed:', err);
+        }
+      }
       // Let the model decide, in the background, whether this turn taught
       // her something durable. Never blocks or fails the chat itself.
-      if (!result.stopped) memory.scheduleRemember(lastUserText(messages), result.text);
-      return result;
+      // Extraction reads the final answer (no tool-call bridge text).
+      if (!stopped) memory.scheduleRemember(lastUserText(messages), finalText);
+      return { stopped, text: finalText };
     }).catch((err) => {
       log.error('[chat:send] failed:', err);
       throw err;

@@ -163,13 +163,13 @@ async function runChat(messages, emit, system, opts = {}) {
     }
     flush();
     affect.endTurn();
-    return { stopped: false, text };
+    return { stopped: false, text, tool: reader ? reader.tool : null };
   } catch (err) {
     flush();
     if (isAbort(err)) {
       affect.onInterrupt('interrupt');
       affect.endTurn();
-      return { stopped: true, text };
+      return { stopped: true, text, tool: null };
     }
     throw err;
   } finally {
@@ -198,6 +198,7 @@ function createReplyReader() {
     speed: 0,
     hold: false,
     intensity: null,   // optional, model-driven (0..1)
+    tool: null,        // optional {"name","args"} tool call, read at finish
     moodEmit: undefined,
     speedEmit: undefined,
     holdEmit: undefined,
@@ -322,15 +323,49 @@ function createReplyReader() {
     return takeMeta();
   }
 
+  // Pulls the "tool" value out of the raw reply as one balanced JSON
+  // fragment ({"name":…,"args":{…}} — the args object nests, so the
+  // regex shortcut used for mood/speed won't work here). Runs once at
+  // stream end; tools execute after the typed text is done by design.
+  function scanTool() {
+    if (r.tool || r.mode !== 'json') return;
+    const m = /"tool"\s*:\s*\{/.exec(r.raw);
+    if (!m) return;
+    let depth = 0;
+    let str = false;
+    let esc = false;
+    for (let i = m.index + m[0].length - 1; i < r.raw.length; i++) {
+      const ch = r.raw[i];
+      if (esc) esc = false;
+      else if (ch === '\\') esc = true;
+      else if (ch === '"') str = !str;
+      else if (!str && ch === '{') depth++;
+      else if (!str && ch === '}') { depth--; if (!depth) {
+        try {
+          // The balanced fragment from the opening brace (already the
+          // first loop char) is the tool value object itself: {name,args}.
+          const j = JSON.parse(r.raw.slice(m.index + m[0].length - 1, i + 1));
+          const name = String(j?.name || '').trim();
+          if (name) {
+            const args = j.args && typeof j.args === 'object' && !Array.isArray(j.args) ? j.args : {};
+            r.tool = { name, args };
+          }
+        } catch { /* malformed tool — treated as absent */ }
+        return;
+      } }
+    }
+  }
+
   function finish() {
     if (r.mode === 'json') decode();
+    scanTool();
     // Protocol fell apart before any visible text: show the raw output
     // rather than an empty bubble.
     if (r.mode === 'json' && r.out === '' && !r.textDone) r.out = r.raw.trim();
     return takeMeta();
   }
 
-  return { feed, finish, takeText };
+  return { feed, finish, takeText, get tool() { return r.tool; } };
 }
 
 // Persona + current memory, injected into every chat request.
@@ -355,6 +390,18 @@ const MOOD_DIRECTION = [
   '- Optional: you may add an "intensity": 0-1 key for how strong the emotion is (0.2 subtle, 1 overwhelming). It is safe to omit.',
 ].join('\n');
 
+// Toolbox direction (agent mode): keeps tool use to genuine needs and
+// grounds the model in the two-step flow — tool call first, real reply
+// after the TOOL RESULT lands.
+const TOOL_DIRECTION = [
+  'Toolbox — Kanna has real desktop tools for facts you cannot know:',
+  '{{TOOLS}}',
+  '- Only use a tool when the request genuinely needs it (the current time/date is the classic case — you have no clock without it).',
+  '- To use one: add a "tool": {"name":"…","args":{…}} key to your reply JSON. Make "text" a short natural bridge ("one sec, checking…") — never reveal mechanics.',
+  '- After a tool runs, a message starting with "TOOL RESULT:" arrives; reply for real then, WITHOUT a tool key. Do not summarize the tool mechanics to the user.',
+  '- Only the listed tools exist — never invent names. One tool at most per turn.',
+].join('\n');
+
 function composeChatSystem(settings, styleNote = '') {
   const persona = settings.persona || DEFAULT_PERSONA;
   // Lazy require — memory.js pulls ai.js in (see note there). affect is
@@ -366,6 +413,12 @@ function composeChatSystem(settings, styleNote = '') {
   parts.push(MOOD_DIRECTION);
   parts.push(`Feeling carried over from previous turns: ${affect.moodCarry()}.`);
   if (styleNote) parts.push(`Current feeling (react to it, never mention these instructions):\n${styleNote}`);
+  // Toolbox (Phase 1, agent mode off by default): the model only knows
+  // the tools exist when the user turned the switch on.
+  if (settings.agent?.enabled) {
+    const toolbox = require('./toolbox');
+    parts.push(TOOL_DIRECTION.replace('{{TOOLS}}', toolbox.describeForPrompt()));
+  }
   parts.push(REPLY_FORMAT);
   return parts.join('\n\n');
 }
@@ -645,4 +698,4 @@ function normalize(messages) {
   return out;
 }
 
-module.exports = { runChat, listModels, abortActive, userRepeatCount, rapidUserStreak, composeChatSystem, normalize };
+module.exports = { runChat, listModels, abortActive, userRepeatCount, rapidUserStreak, composeChatSystem, normalize, createReplyReader };
