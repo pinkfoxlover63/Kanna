@@ -115,15 +115,27 @@ function parseOps(text) {
 }
 
 function worthRemembering(user, reply) {
-  return String(user || '').trim().length > 30 && String(reply || '').trim().length > 30;
+  // Frequent mode: every real exchange can teach, so short turns like
+  // "my cat's name is oli" are not skipped. Only tone out empty and
+  // near-empty turns so 'ok'/'lol' don't wake the extractor model.
+  return String(user || '').trim().length >= 10 && String(reply || '').trim().length >= 10;
 }
 
+const MAX_QUEUE = 3;
 let inFlight = false;
-let queued = null;
+let queue = [];
 
 function scheduleRemember(userText, replyText) {
   if (!worthRemembering(userText, replyText)) return;
-  if (inFlight) { queued = [userText, replyText]; return; }
+  if (inFlight) {
+    // Keep room for fresh turns instead of overwriting the slot; when
+    // full, drop the oldest since the extractor always reads only the
+    // latest exchange anyway.
+    const pair = [userText, replyText];
+    if (!queue.length || queue[queue.length - 1][0] !== pair[0]) queue.push(pair);
+    if (queue.length > MAX_QUEUE) queue.shift();
+    return;
+  }
   runRemember(userText, replyText);
 }
 
@@ -152,9 +164,8 @@ async function runRemember(userText, replyText) {
     console.log('[memory]', 'extraction skipped:', err?.message || err);
   } finally {
     inFlight = false;
-    if (queued) {
-      const next = queued;
-      queued = null;
+    if (queue.length) {
+      const next = queue.shift();
       runRemember(next[0], next[1]);
     }
   }
