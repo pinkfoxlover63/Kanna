@@ -114,6 +114,14 @@ async function runChat(messages, emit, system, opts = {}) {
   }
   let text = '';
   const reader = plain ? null : createReplyReader();
+  // bufferToolText (agent mode): hold decoded text back until the stream
+  // ends. A reply that carried a "tool" call gets its bridge text dropped
+  // — the visible response is only the second pass, so the user sees one
+  // answer (with the time in it), not "checking… [tool placeholder]"
+  // followed by the real answer glued together. A reply WITHOUT a tool
+  // call releases the buffer as-is: typing stays live.
+  const heldText = opts.bufferToolText && !plain ? [] : null;
+  const releaseText = (t) => { if (t) { text += t; if (!heldText) emit('chat:chunk', t); else heldText.push(t); } };
   const push = (chunk) => {
     if (!reader) {
       text += chunk;
@@ -128,11 +136,7 @@ async function runChat(messages, emit, system, opts = {}) {
         affect.observe(meta, 'reply');
       }
     }
-    const t = reader.takeText();
-    if (t) {
-      text += t;
-      emit('chat:chunk', t);
-    }
+    releaseText(reader.takeText());
   };
   // Runs on success and on abort: hand over any decoded text left in the
   // reader buffer and a meta that was still pending.
@@ -140,10 +144,12 @@ async function runChat(messages, emit, system, opts = {}) {
     if (!reader) return;
     const meta = reader.finish();
     if (meta) emit('chat:meta', meta);
-    const t = reader.takeText();
-    if (t) {
-      text += t;
-      emit('chat:chunk', t);
+    releaseText(reader.takeText());
+    if (heldText && reader.tool) {
+      heldText.length = 0;          // bridge text — never shown
+      text = '';                    // same for the returned text
+    } else if (heldText) {
+      for (const t of heldText) emit('chat:chunk', t);
     }
   };
 

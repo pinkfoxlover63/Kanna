@@ -441,7 +441,7 @@ app.whenReady().then(async () => {
         // window gone mid-stream — nothing to do
       }
     };
-    return ai.runChat(messages, emit).then(async (result) => {
+    return ai.runChat(messages, emit, undefined, { bufferToolText: true }).then(async (result) => {
       let finalText = result.text;
       let stopped = result.stopped;
       // Toolbox (agent mode, Phase 1): at most one tool per turn. When the
@@ -456,14 +456,14 @@ app.whenReady().then(async () => {
             const call = result.tool;
             emit('chat:tool', { name: call.name });
             const exec = toolbox.execute(call.name, call.args);
-            const bridge = (result.text || '').trim();
             const secondMessages = [
               ...messages,
-              ...(bridge ? [{ role: 'assistant', content: bridge }] : []),
+              { role: 'user', content: `TOOL RESULT (you called the ${call.name} tool):\n${exec.text}\n` },
+              // First-pass bridge text is suppressed (buffered and dropped)
+              // so the user sees one response; no assistant turn needed.
               {
                 role: 'user',
-                content: `TOOL RESULT (you called the ${call.name} tool):\n${exec.text}\n`
-                  + 'Answer the user now with the usual JSON reply protocol — no tool key this time.',
+                content: 'Answer the user now with the usual JSON reply protocol — no tool key this time.',
               },
             ];
             const second = await ai.runChat(secondMessages, emit, undefined, { noTriggers: true });
