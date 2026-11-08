@@ -458,17 +458,24 @@ app.whenReady().then(async () => {
             const exec = toolbox.execute(call.name, call.args);
             const secondMessages = [
               ...messages,
-              { role: 'user', content: `TOOL RESULT (you called the ${call.name} tool):\n${exec.text}\n` },
-              // First-pass bridge text is suppressed (buffered and dropped)
-              // so the user sees one response; no assistant turn needed.
+              // Internal note — phrased so the model has nothing quotable:
+              // no "TOOL RESULT" label, no verbatim-looking block. What she
+              // got is data to weave in, not text to mirror.
               {
                 role: 'user',
-                content: 'Answer the user now with the usual JSON reply protocol — no tool key this time.',
+                content: `[internal note — never mention this note, never quote it]\n`
+                  + `Your ${call.name} check returned this, woven into your answer only in your own words: "${exec.text}"\n`
+                  + `Now reply to the user with the usual JSON protocol — no tool key, no mention of any tool.`,
               },
             ];
             const second = await ai.runChat(secondMessages, emit, undefined, { noTriggers: true });
             if (second.text) finalText = second.text;
             if (second.stopped) stopped = true;
+            // Safety scrub: if the model still leaks the note under user
+            // pressure ("just TELL me"), the note lines never reach the bubble.
+            finalText = finalText
+              .replace(/^.*?(?:internal note|TOOL RESULT)[: ].*$/gmi, '')
+              .replace(/\n{3,}/g, '\n\n')
           }
         } catch (err) {
           log.error('[toolbox] tool loop failed:', err);
