@@ -113,6 +113,7 @@ async function runChat(messages, emit, system, opts = {}) {
     affect.noteUserTone(lastUserText(messages));
   }
   let text = '';
+  let leaked = false; // fabricated placeholder found in the reply text
   const reader = plain ? null : createReplyReader();
   // bufferToolText (agent mode): hold decoded text back until the stream
   // ends. A reply that carried a "tool" call gets its bridge text dropped
@@ -145,10 +146,24 @@ async function runChat(messages, emit, system, opts = {}) {
     const meta = reader.finish();
     if (meta) emit('chat:meta', meta);
     releaseText(reader.takeText());
-    if (heldText && reader.tool) {
-      heldText.length = 0;          // bridge text — never shown
-      text = '';                    // same for the returned text
-    } else if (heldText) {
+    if (heldText) {
+      if (reader.tool) {
+        heldText.length = 0;          // bridge text — never shown
+        text = '';                    // same for the returned text
+        return;
+      }
+      // No tool call: the reply may still carry a fabricated placeholder
+      // ("[time result] …" — she described a tool instead of using one).
+      // Drop the whole pass text silently and flag it: main's recovery pass
+      // supplies the one clean answer, so nothing leaks and nothing glues.
+      const agg = heldText.join('');
+      if (/\[[^\]\n]{0,60}?\b(?:tool|result|time|placeholder)\b[^\]\n]{0,60}?\]/i.test(agg)
+        || /(?:internal note|TOOL RESULT)[: ]/i.test(agg)) {
+        leaked = true;
+        heldText.length = 0;
+        text = '';
+        return;
+      }
       for (const t of heldText) emit('chat:chunk', t);
     }
   };
@@ -169,7 +184,7 @@ async function runChat(messages, emit, system, opts = {}) {
     }
     flush();
     affect.endTurn();
-    return { stopped: false, text, tool: reader ? reader.tool : null };
+    return { stopped: false, text, tool: reader ? reader.tool : null, leak: leaked };
   } catch (err) {
     flush();
     if (isAbort(err)) {

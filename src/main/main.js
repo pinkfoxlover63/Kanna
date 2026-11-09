@@ -486,12 +486,14 @@ app.whenReady().then(async () => {
         }
       } else {
         // Placeholder recovery: the model skipped the "tool" key but wrote
-        // a fabricated placeholder (or leaked note lines). Scrub it, then —
-        // in agent mode only — run the one fact tool we have ourselves and
-        // give her the result as an internal note, so the user still gets a
-        // real answer instead of a bracket stub.
+        // a fabricated placeholder. ai.js already scrubbed it out of the
+        // visible text and flagged this with result.leak (or the scrub here
+        // catches older shapes); in agent mode only, run the one fact tool
+        // we have and give her the result as an internal note, so the user
+        // still gets a real answer instead of a bracket stub. The recovery
+        // pass streams APPEND — ai.js guarantees leaked text was dropped.
         const scrubbed = scrubLeak(finalText);
-        if (scrubbed.trim() !== String(finalText || '').trim()) {
+        if (result.leak || scrubbed.trim() !== String(finalText || '').trim()) {
           try {
             const s = await settings.getSettings();
             if (s.agent?.enabled && !stopped) {
