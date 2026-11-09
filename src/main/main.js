@@ -481,8 +481,6 @@ app.whenReady().then(async () => {
       const scrubLeak = (t) => String(t || '')
         .replace(/^.*?(?:internal note|TOOL RESULT)[: ].*$/gmi, '')
         .replace(/\[[^\]\n]{0,60}?\b(?:tool|result|time|placeholder)\b[^\]\n]{0,60}?\]/gi, '')
-        .replace(/\s*\{[\s\S]*"tool"\s*:[\s\S]*}\s*$/i, '')
-        .replace(/\s*\{[\s\S]*"mood"\s*:[\s\S]*"text"\s*:[\s\S]*}\s*$/i, '')
         .replace(/\n{3,}/g, '\n\n');
       // Internal note the next pass gets: the name stays unquotable so
       // under user pressure there is nothing mirroring. `tail` tells her
