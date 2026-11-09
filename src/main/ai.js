@@ -123,7 +123,7 @@ async function runChat(messages, emit, system, opts = {}) {
   // WITHOUT a tool call releases the buffer as-is: typing stays live.
   // Continuation chain passes are run WITHOUT this option: they stream
   // live, so she speaks right after each tool — never wait-for-all.
-  const heldText = opts.bufferToolText && !plain ? [] : null;
+  const heldText = (!plain && reader) ? [] : null;
   const releaseText = (t) => { if (t) { text += t; if (!heldText) emit('chat:chunk', t); else heldText.push(t); } };
   const push = (chunk) => {
     if (!reader) {
@@ -147,7 +147,9 @@ async function runChat(messages, emit, system, opts = {}) {
     if (!reader) return;
     const meta = reader.finish();
     if (meta) emit('chat:meta', meta);
-    releaseText(reader.takeText());
+    const held = reader.takeText();
+    if (heldText) heldText.length = 0;
+    releaseText(held);
     if (heldText) {
       // Tool call in a buffered pass = pure prelude — its text stays hidden
       // from the stream, but it comes back on the result as `bridge` so
