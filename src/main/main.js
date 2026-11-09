@@ -568,12 +568,6 @@ app.whenReady().then(async () => {
               // reply silent anyway and the whole answer would be "…").
               const isFinal = !!cur.stopped || !cur.tool || count >= maxChain;
               const silent = !isFinal && (!passText || (allowSilent && cur.silent === true));
-              if (cur.silent === true && !allowSilent && !isFinal) {
-                log.info('[toolbox]', `pass ${count}: model wrote "silent": true but the option is off — voice plays`);
-              }
-              if (isFinal && cur.silent === true) {
-                log.info('[toolbox]', `pass ${count}: model wrote "silent": true on the final pass — ignored, voice plays`);
-              }
               emit('chat:passDone', { index: count, text: passText, silent });
               log.info('[toolbox]', `chain pass ${count}/${maxChain}${silent ? ' silent' : ''} len=${passText.length}`);
               await waitPassSpoken();
