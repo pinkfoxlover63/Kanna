@@ -487,7 +487,6 @@ app.whenReady().then(async () => {
         + (canChain
           ? ` If that fact alone fully answers the user, answer for real WITHOUT a tool key; otherwise weave the fact into "text" and also add the NEXT listed tool you still need as a second "tool" key in the same reply.`
           : ` Answer the user now, purely with "text": weave the fact in with your own words, no tool key, no placeholders.`)
-        + ` Use each listed tool at most ONCE per turn — never repeat a tool you already used, the data you have is fresh from it.`
         + ` If the data is an error, say gently that the check failed right now.`;
 
       // No tool key at all: normal reply, with the placeholder-recovery
@@ -557,20 +556,7 @@ app.whenReady().then(async () => {
         if (s.agent?.enabled) {
           const thread = [...messages];
           let alreadyHide = false;   // hide tool ran — desktop side is dark
-          const usedTools = new Set();   // once-per-turn guard for the note
-          // Voice-led bridge: run #1's short lead-in line ("One sec,
-          // checking…") is spoken before the first tool runs. She never
-          // goes silent while reaching for a tool, and the line still
-          // drops out of the visible stream (ai hands it back as .bridge).
-          const bridgePass = scrubLeak(first.bridge || '').trim();
-          if (first.tool && bridgePass) {
-            passes.push(bridgePass);
-            emit('chat:passDone', { index: 0, text: bridgePass, silent: false });
-            log.info('[toolbox]', `bridge pass len=${bridgePass.length}`);
-            await waitPassSpoken();
-          }
           for (;;) {
-            if (chainStopFlag) { stopped = true; break; }
             if (count > 0) {
               const passText = scrubLeak(cur.text).trim();
               passes.push(passText);
@@ -600,14 +586,10 @@ app.whenReady().then(async () => {
             emit('chat:tool', { name: call.name, chain: count, maxChain });
             // Post-hide gate: once she is off the desktop, no further tool
             // can run this turn (and the user is away anyway). The note-fed
-            // pass then just wraps the chat up. Same spirit for a repeated
-            // tool call: its data is already in hand — reject it politely.
+            // pass then just wraps the chat up.
             const exec = alreadyHide
               ? { ok: false, text: 'you are hidden from the desktop — call no more tools; finish the reply with "text" only.' }
-              : usedTools.has(call.name)
-                ? { ok: false, text: `ERROR you already used the ${call.name} tool this turn — its real data arrived in your note above. Do not repeat it; answer with "text" now.` }
-                : await toolbox.execute(call.name, call.args);
-            if (exec.ok) usedTools.add(call.name);
+              : await toolbox.execute(call.name, call.args);
             applyToolEffects(call, exec);
             alreadyHide = alreadyHide || (call.name === 'hide' && exec.ok);
             // History: while she works on the tool, the user is idle — the

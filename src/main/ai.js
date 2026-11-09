@@ -114,7 +114,6 @@ async function runChat(messages, emit, system, opts = {}) {
   }
   let text = '';
   let leaked = false; // fabricated placeholder found in the reply text
-  let bridgeText = ''; // pre-tool talk from run #1 (never streamed; given back via .bridge)
   const reader = plain ? null : createReplyReader();
   // bufferToolText (agent chat): hold decoded text back until the stream
   // ends. A reply that carried a "tool" call gets its bridge text dropped
@@ -149,12 +148,10 @@ async function runChat(messages, emit, system, opts = {}) {
     if (meta) emit('chat:meta', meta);
     releaseText(reader.takeText());
     if (heldText) {
-      // Tool call in a buffered pass = pure prelude — its text stays hidden
-      // from the stream, but it comes back on the result as `bridge` so
-      // main can dispatch it as a spoken lead-in line (voice-led chain).
+      // Tool call in a buffered pass = pure prelude — its text stays
+      // hidden; the visible reply comes from the next note-fed pass.
       if (reader.tool) {
-        bridgeText = heldText.join('');
-        heldText.length = 0;          // bridge text — never streamed
+        heldText.length = 0;          // bridge text — never shown
         text = '';                    // same for the returned text
         return;
       }
@@ -189,7 +186,7 @@ async function runChat(messages, emit, system, opts = {}) {
     }
     flush();
     affect.endTurn();
-    return { stopped: false, text, tool: reader ? reader.tool : null, leak: leaked, silent: reader ? reader.silent === true : false, bridge: bridgeText };
+    return { stopped: false, text, tool: reader ? reader.tool : null, leak: leaked, silent: reader ? reader.silent === true : false };
   } catch (err) {
     flush();
     if (isAbort(err)) {
@@ -440,7 +437,6 @@ const TOOL_DIRECTION = [
   '2. A hidden internal note then gives you the real data. Reply again: weave that fact into "text" in your own words AND, if one more listed tool helps the same request, add a second "tool" key to the same reply.',
   '3. Repeat step 2 until the request is fully answered, then finish WITHOUT a tool key. The note after each tool arrives in order — one tool at a time.',
   'Rules:',
-  '- Always give "text" a one-line lead-in like "One sec, checking…" in the same reply as a "tool" key — the user hears it while your tool runs. Never call a tool with an empty "text".',
   '- Never write brackets like [time result]; never insert a guessed result. The visible "text" uses real note data only, in your own words.',
   '- Only the listed tools exist; never invent names. At most ONE new tool call per reply.',
   '- Never mention tools, notes, checks, or the protocol in the text the user sees.',
@@ -463,7 +459,7 @@ function composeChatSystem(settings, styleNote = '') {
     const toolbox = require('./toolbox');
     let toolBlock = TOOL_DIRECTION.replace('{{TOOLS}}', toolbox.describeForPrompt());
     if (settings.agent?.silentTool) {
-      toolBlock += '\n- Element "silent": true on an INTERMEDIATE reply (one that still carries a "tool" key) skips speaking it, so the chain continues immediately. Never silence the final reply, and only stay silent when the user would not miss it.';
+      toolBlock += '\n- Element "silent": true on an INTERMEDIATE reply (one that still carries a "tool" key) skips the VOICE for that reply, so the chain continues immediately. Silence never changes the words: "text" must still be the complete woven reply with the tool data spelled out — never "..." or a placeholder. Never silence the final reply, and only stay silent when the user would not miss it.';
     }
     parts.push(toolBlock);
   }
