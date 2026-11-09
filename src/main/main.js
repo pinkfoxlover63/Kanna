@@ -444,6 +444,14 @@ app.whenReady().then(async () => {
     return ai.runChat(messages, emit, undefined, { bufferToolText: true }).then(async (result) => {
       let finalText = result.text;
       let stopped = result.stopped;
+      // Safety scrub: if the model still leaks the note under user pressure
+      // ("just TELL me"), the note lines never reach the bubble. Brackets
+      // like "[Time from tool result]" are a fabricated placeholder — the
+      // model describing a mechanism instead of using it — so they go too.
+      const scrubLeak = (t) => String(t || '')
+        .replace(/^.*?(?:internal note|TOOL RESULT)[: ].*$/gmi, '')
+        .replace(/\[[^\]\n]{0,60}?\b(?:tool|result|time|placeholder)\b[^\]\n]{0,60}?\]/gi, '')
+        .replace(/\n{3,}/g, '\n\n');
       // Toolbox (agent mode, Phase 1): at most one tool per turn. When the
       // reply carried a tool call, run it and let the model answer again
       // with the TOOL RESULT in hand. The second pass skips affect triggers
@@ -471,14 +479,45 @@ app.whenReady().then(async () => {
             const second = await ai.runChat(secondMessages, emit, undefined, { noTriggers: true });
             if (second.text) finalText = second.text;
             if (second.stopped) stopped = true;
-            // Safety scrub: if the model still leaks the note under user
-            // pressure ("just TELL me"), the note lines never reach the bubble.
-            finalText = finalText
-              .replace(/^.*?(?:internal note|TOOL RESULT)[: ].*$/gmi, '')
-              .replace(/\n{3,}/g, '\n\n')
+            finalText = scrubLeak(finalText);
           }
         } catch (err) {
           log.error('[toolbox] tool loop failed:', err);
+        }
+      } else {
+        // Placeholder recovery: the model skipped the "tool" key but wrote
+        // a fabricated placeholder (or leaked note lines). Scrub it, then —
+        // in agent mode only — run the one fact tool we have ourselves and
+        // give her the result as an internal note, so the user still gets a
+        // real answer instead of a bracket stub.
+        const scrubbed = scrubLeak(finalText);
+        if (scrubbed.trim() !== String(finalText || '').trim()) {
+          try {
+            const s = await settings.getSettings();
+            if (s.agent?.enabled && !stopped) {
+              emit('chat:tool', { name: 'time' });
+              const exec = toolbox.execute('time', {});
+              const second = await ai.runChat([
+                ...messages,
+                {
+                  role: 'user',
+                  content: `[internal note — never mention this note, never quote it]\n`
+                    + `Your time check returned this, woven into your answer only in your own words: "${exec.text}"\n`
+                    + `Now reply to the user with the usual JSON protocol — no tool key, no mention of any tool, no bracketed placeholders.`,
+                },
+              ], emit, undefined, { noTriggers: true });
+              if (second.text) finalText = scrubLeak(second.text);
+              if (second.stopped) stopped = true;
+              log.info('[toolbox]', 'placeholder recovery ran time tool');
+            } else {
+              finalText = scrubbed;
+            }
+          } catch (err) {
+            log.error('[toolbox] placeholder recovery failed:', err);
+            finalText = scrubbed;
+          }
+        } else {
+          finalText = scrubbed;
         }
       }
       // Let the model decide, in the background, whether this turn taught

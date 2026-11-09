@@ -404,6 +404,7 @@ const TOOL_DIRECTION = [
   '{{TOOLS}}',
   '- Only use a tool when the request genuinely needs it (the current time/date is the classic case — you have no clock without it).',
   '- To use one: add a "tool": {"name":"…","args":{…}} key to your reply JSON. Make "text" a short natural bridge ("one sec, checking…") — never reveal mechanics.',
+  '- NEVER write bracketed placeholders like [time], [tool result], or [time from tool result] — a guessed bracket is always wrong and always embarrassing. Either call the tool for real with the "tool" key, or answer from what you already know. There is no third option where a result gets inserted later.',
   '- After a tool runs, an [internal note] arrives holding its result: answer for real, WITHOUT a tool key. Weave the facts into your own words — never quote the note, never write "TOOL RESULT" or "internal note" in your visible text, never describe calling a tool.',
   '- Only the listed tools exist — never invent names. One tool at most per turn.',
 ].join('\n');
