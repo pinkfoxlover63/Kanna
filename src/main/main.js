@@ -491,7 +491,7 @@ app.whenReady().then(async () => {
         + (canChain
           ? ` If that fact alone fully answers the user, answer for real WITHOUT a tool key; otherwise weave the fact into "text" and also add the NEXT listed tool you still need as a second "tool" key in the same reply.`
           : ` Answer the user now, purely with "text": weave the fact in with your own words, no tool key, no placeholders.`)
-        + ` Also before finishing, re-read the user's ORIGINAL request. Any fact they asked for but is still unknown here must be answered — call the listed tool that gives it (never guess or make one up), instead of wrapping up.`
+        + ` If the data is an error, say gently that the check failed right now.`;
 
       // No tool key at all: normal reply, with the placeholder-recovery
       // branch still guarding fabricated bracket stubs.
