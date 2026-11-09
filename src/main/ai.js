@@ -391,11 +391,66 @@ function createReplyReader() {
   }
 
   function finish() {
-    if (r.mode === 'json') decode();
-    scanTool();
-    // Protocol fell apart before any visible text: show the raw output
-    // rather than an empty bubble.
-    if (r.mode === 'json' && r.out === '' && !r.textDone) r.out = r.raw.trim();
+    const ranges = [];
+    let root = null;
+    if (r.mode === 'json') {
+      decode();
+      let scan = r.raw.indexOf('{');
+      while (scan >= 0 && scan < r.raw.length) {
+        if (r.raw[scan] !== '{') { scan++; continue; }
+        let depth = 0, str = false, esc = false, closed = -1;
+        for (let i = scan; i < r.raw.length; i++) {
+          const ch = r.raw[i];
+          if (esc) esc = false;
+          else if (ch === '\\') esc = true;
+          else if (ch === '"') str = !str;
+          else if (!str) {
+            if (ch === '{') depth++;
+            else if (ch === '}') { depth--; if (!depth) { closed = i; break; } }
+          }
+        }
+        if (closed < 0) break;
+        ranges.push([scan, closed]);
+        try {
+          const candidate = JSON.parse(r.raw.slice(scan, closed + 1));
+          if (candidate && typeof candidate === 'object' && !Array.isArray(candidate)) {
+            if (typeof candidate.text === 'string' && candidate.text.trim() &&
+                (!root || !(typeof root.text === 'string' && root.text.trim()))) root = candidate;
+            if (!root) root = candidate;
+          }
+        } catch { /* malformed object */ }
+        const next = r.raw.indexOf('{', closed + 1);
+        if (next === scan) break;
+        scan = next;
+      }
+      if (root) {
+        if (typeof root.text === 'string' && root.text.trim()) r.out = root.text;
+        if (typeof root.mood === 'string') { r.mood = root.mood.trim().toLowerCase(); r.moodSent = true; }
+        if (typeof root.speed === 'number') { r.speed = root.speed; r.speedSent = true; }
+        if (typeof root.hold === 'boolean') { r.hold = root.hold; r.holdSent = true; }
+        if (typeof root.intensity === 'number') { r.intensity = root.intensity; r.intensitySent = true; }
+        if (typeof root.silent === 'boolean') { r.silent = root.silent; r.silentSent = true; }
+      }
+      if (!r.out.trim()) {
+        for (let i = ranges.length - 1; i >= 0; i--) {
+          try {
+            const j = JSON.parse(r.raw.slice(ranges[i][0], ranges[i][1] + 1));
+            if (j && typeof j.text === 'string' && j.text.trim()) { r.out = j.text; break; }
+          } catch { /* ignore */ }
+        }
+      }
+      if (!r.out.trim()) {
+        let pos = 0;
+        let build = '';
+        for (const [s, e] of ranges) { build += r.raw.slice(pos, s); pos = e + 1; }
+        build += r.raw.slice(pos);
+        const cleaned = build.replace(/\s+/g, ' ').trim();
+        if (cleaned) r.out = cleaned;
+      }
+      if (!r.out.trim()) r.out = '…';
+      scanTool();
+    }
+    if (r.mode === 'json' && !r.out.trim() && !r.textDone) r.out = '…';
     return takeMeta();
   }
 
