@@ -73,6 +73,21 @@ function applyOps(add, removeKeys) {
   return entries;
 }
 
+// Self-memory write (toolbox `remember`): upsert one durable fact the
+// model chose to keep, with the same key rules as the extraction ops.
+function addSelfNote(key, text) {
+  const k = String(key || '')
+    .trim().toLowerCase()
+    .replace(/[^a-z0-9.]+/g, '.')
+    .replace(/\.+/g, '.')
+    .replace(/^\.+|\.+$/g, '')
+    .slice(0, MAX_KEY);
+  const value = String(text || '').trim().slice(0, MAX_VALUE);
+  if (!k || !value) return { ok: false, text: 'nothing to remember (need a one-sentence fact)' };
+  const entries = applyOps([{ key: k, value }], []);
+  return { ok: true, key: k, value, count: entries.length };
+}
+
 const EXTRACTION_SYSTEM = [
   'You maintain a compact long-term memory store about the user for a desktop companion called Kanna.',
   'Given the current memory and the latest exchange, decide whether durable facts should be added or removed.',
@@ -171,4 +186,4 @@ async function runRemember(userText, replyText) {
   }
 }
 
-module.exports = { load, clearAll, removeEntry, renderForPrompt, scheduleRemember };
+module.exports = { load, clearAll, removeEntry, renderForPrompt, scheduleRemember, addSelfNote };

@@ -29,6 +29,23 @@ let isQuitting = false;
 let chainWaiter = null;   // resolver of the current pass-speech wait
 let chainStopFlag = false;
 
+// Toolbox side effects that live outside toolbox.js (main owns the window
+// and the renderer): background art swap and hide-to-tray. Applied right
+// after a tool's result lands, before the note-fed pass answers it.
+function applyToolEffects(call, exec) {
+  if (!exec?.ok) return;
+  if (call.name === 'background') {
+    const idx = Number(exec.applied);
+    if (Number.isFinite(idx) && idx >= 1) {
+      win?.webContents?.send('kanna:background', { index: idx });
+      log.info('[toolbox]', `background -> scene ${idx}`);
+    }
+  } else if (call.name === 'hide') {
+    win?.hide();
+    log.info('[toolbox]', 'window hidden by the hide tool');
+  }
+}
+
 function toggleDevTools() {
   if (!win) return;
   const wc = win.webContents;
@@ -481,6 +498,7 @@ app.whenReady().then(async () => {
               const pick = named && toolbox.has(named[1]) ? named[1] : 'time';
               emit('chat:tool', { name: pick, chain: 1 });
               const exec = await toolbox.execute(pick, {});
+              applyToolEffects({ name: pick }, exec);
               const second = await ai.runChat([
                 ...messages,
                 { role: 'user', content: toolNote({ name: pick }, exec.text, false) },
@@ -532,13 +550,10 @@ app.whenReady().then(async () => {
         chainStopFlag = false;
         if (s.agent?.enabled) {
           const thread = [...messages];
+          let alreadyHide = false;   // hide tool ran — desktop side is dark
           for (;;) {
             if (count > 0) {
-              const rawPass = scrubLeak(cur.text).trim();
-              // Dots-only text ("...", "…") is the model punting on a pass
-              // — treat it as empty so the chain skips it instantly instead
-              // of showing literal dots as a reply.
-              const passText = /^[.\s…·。･・]+$/.test(rawPass) ? '' : rawPass;
+              const passText = scrubLeak(cur.text).trim();
               passes.push(passText);
               // Voice first: the renderer shows/speaks this pass now; the
               // tool it calls runs only after the speech ends — unless the
@@ -554,7 +569,14 @@ app.whenReady().then(async () => {
             count++;
             const call = cur.tool;
             emit('chat:tool', { name: call.name, chain: count, maxChain });
-            const exec = await toolbox.execute(call.name, call.args);
+            // Post-hide gate: once she is off the desktop, no further tool
+            // can run this turn (and the user is away anyway). The note-fed
+            // pass then just wraps the chat up.
+            const exec = alreadyHide
+              ? { ok: false, text: 'you are hidden from the desktop — call no more tools; finish the reply with "text" only.' }
+              : await toolbox.execute(call.name, call.args);
+            applyToolEffects(call, exec);
+            alreadyHide = alreadyHide || (call.name === 'hide' && exec.ok);
             // History: while she works on the tool, the user is idle — the
             // same bracketed asterisk pattern the shake scenes use. Thread
             // mirrors exactly what history will hold: previous pass reply

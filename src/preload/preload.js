@@ -47,6 +47,10 @@ contextBridge.exposeInMainWorld('kanna', {
     ipcRenderer.on('chat:passDone', (_e, info) => listener(info));
   },
   chainResume: () => ipcRenderer.send('kanna:chainResume'),
+  // Toolbox `background`: she picked a new wallpaper scene for the stage.
+  onBackground: (listener) => {
+    ipcRenderer.on('kanna:background', (_e, info) => listener(info));
+  },
   // Main-pushed canned reactions (shake dizzy/angry lines).
   onShake: (listener) => {
     ipcRenderer.on('kanna:shake', (_e, g) => listener(g));

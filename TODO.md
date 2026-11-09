@@ -89,6 +89,22 @@ Backlog of things not built yet. Pick from the top when starting something new.
 
 ## Completed recently (v0.1.3)
 
+- [x] **Toolbox Phase 3 — remember / background / hide** — three new
+  allowlist tools in `src/main/toolbox.js`. `remember` self-writes ONE
+  durable fact through new `memory.addSelfNote` (same key rules as the
+  extraction ops, upsert, args `{text, key?}`); a regex gate at the
+  executor rejects password/key/token-shaped text — the blocklist lives in
+  code, not the prompt. `background` validates a numbered
+  `assets/background/N.png` scene (no args = list scenes) and returns
+  `applied`; main's new `applyToolEffects` pushes `kanna:background {index}`
+  and the renderer swaps the stage art (CSSOM — CSP-safe), defaulting back
+  to scene 1 on restart. `hide` ducks the window off the desktop
+  (`win.hide()`, tray stays); main enforces the post-hide gate — no further
+  tool executes that turn, the note says finish (she never summons herself;
+  Ctrl+Shift+K belongs to the user). Per-tool arg validation in
+  `execute`: required keys for arg tools, unknown-key rejection, no-arg
+  tools reject anything beyond `{}`.
+
 - [x] **Toolbox voice-sequenced chaining + silent passes** — the voice leads
   the chain now: each woven pass is dispatched whole to the renderer via
   `chat:passDone` {index, text, silent} and main awaits `kanna:chainResume`

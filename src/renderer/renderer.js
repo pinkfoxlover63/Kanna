@@ -13,6 +13,7 @@
   const sendBtn = $('#send');
   const statusEl = $('#status');
   const toastEl = $('#toast');
+  const stageEl = $('.stage');
 
   const EMOTES = ['angry', 'bored', 'dizzy', 'happy', 'neutral', 'sad', 'shy', 'strained', 'surprise', 'teasing'];
 
@@ -939,6 +940,15 @@ async function runShakeAI(shakes) {
   window.kanna.onTool((info) => {
     if (!info?.name) return;
     toast(`Used her ${info.name} tool…`);
+  });
+
+  // Toolbox `background`: she moved to another wallpaper scene — swap the
+  // stage art. The flat CSS keeps scene 1 as the default after a restart.
+  window.kanna.onBackground?.((info) => {
+    const idx = Number(info?.index);
+    if (!Number.isFinite(idx) || idx < 1) return;
+    stageEl.style.backgroundImage = `url('../../assets/background/${idx}.png')`;
+    toast(`Room art changed to scene ${idx}`);
   });
 
   // Speech-sequenced chain: main hands over each woven pass whole after
