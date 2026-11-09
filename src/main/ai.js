@@ -186,7 +186,7 @@ async function runChat(messages, emit, system, opts = {}) {
     }
     flush();
     affect.endTurn();
-    return { stopped: false, text, tool: reader ? reader.tool : null, leak: leaked };
+    return { stopped: false, text, tool: reader ? reader.tool : null, leak: leaked, silent: reader ? reader.silent === true : false };
   } catch (err) {
     flush();
     if (isAbort(err)) {
@@ -230,6 +230,8 @@ function createReplyReader() {
     speedSent: false,
     holdSent: false,
     intensitySent: false,
+    silent: null,      // optional per-pass "silent" flag (voice skip)
+    silentSent: false,
     out: '',           // decoded text not yet handed to the caller
   };
 
@@ -263,6 +265,15 @@ function createReplyReader() {
       if (m) {
         r.intensity = Number(m[1]);
         r.intensitySent = true;
+      }
+    }
+    // Optional "silent": true — chain passes may skip the voice so the
+    // next tool runs immediately (agent silent-chaining option).
+    if (!r.silentSent) {
+      const m = /"silent"\s*:\s*(true|false)/.exec(r.raw);
+      if (m) {
+        r.silent = m[1] === 'true';
+        r.silentSent = true;
       }
     }
   }
@@ -388,7 +399,7 @@ function createReplyReader() {
     return takeMeta();
   }
 
-  return { feed, finish, takeText, get tool() { return r.tool; } };
+  return { feed, finish, takeText, get tool() { return r.tool; }, get silent() { return r.silent; } };
 }
 
 // Persona + current memory, injected into every chat request.
@@ -446,7 +457,11 @@ function composeChatSystem(settings, styleNote = '') {
   // the tools exist when the user turned the switch on.
   if (settings.agent?.enabled) {
     const toolbox = require('./toolbox');
-    parts.push(TOOL_DIRECTION.replace('{{TOOLS}}', toolbox.describeForPrompt()));
+    let toolBlock = TOOL_DIRECTION.replace('{{TOOLS}}', toolbox.describeForPrompt());
+    if (settings.agent?.silentTool) {
+      toolBlock += '\n- Element "silent": true on an INTERMEDIATE reply (one that still carries a "tool" key) skips speaking it, so the chain continues immediately. Never silence the final reply, and only stay silent when the user would not miss it.';
+    }
+    parts.push(toolBlock);
   }
   parts.push(REPLY_FORMAT);
   return parts.join('\n\n');

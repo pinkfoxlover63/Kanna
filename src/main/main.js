@@ -24,6 +24,11 @@ let win = null;
 let tray = null;
 let isQuitting = false;
 
+// Speech-sequenced agent chain: while main waits between passes for the
+// renderer to finish speaking one, these hold the handshake.
+let chainWaiter = null;   // resolver of the current pass-speech wait
+let chainStopFlag = false;
+
 function toggleDevTools() {
   if (!win) return;
   const wc = win.webContents;
@@ -495,31 +500,56 @@ app.whenReady().then(async () => {
       // Agent chain: run #1 may carry the first tool; every note-fed pass
       // weaves the previous result into visible text and may itself carry
       // the next tool call (time -> weather, etc.) until the cap or a
-      // plain final answer. Passes recorded separately — each becomes its
-      // own chat turn; waiting notes bookend the gaps (shake-style).
+      // plain final answer. THE VOICE LEADS THE CHAIN: each woven pass is
+      // dispatched to the renderer (chat:passDone) and main waits for its
+      // speech to finish before running the tool that pass calls. A pass
+      // may declare "silent" (agent.silentTool on) to skip speaking and
+      // continue immediately. Passes recorded separately — each becomes
+      // its own chat turn; waiting notes bookend the gaps (shake-style).
       const passes = [];
       const notes = [];
       let cur = first;
       let count = 0;
+      // Resolves when the renderer finished speaking the current pass
+      // (or used the silent path), the user pressed stop, or ~5 min passed
+      // in case a speech engine wedged.
+      const waitPassSpoken = () => new Promise((resolve) => {
+        if (chainStopFlag) { resolve(); return; }
+        const timer = setTimeout(() => { chainWaiter = null; resolve(); }, 300000);
+        chainWaiter = () => { clearTimeout(timer); chainWaiter = null; resolve(); };
+      });
+      // Chain passes stream through a swallowing emit: the renderer gets
+      // the finished pass text exactly once, via chat:passDone, instead
+      // of raw chunks it would have to slice itself.
+      const chainEmit = (type, payload) => {
+        if (type === 'chat:chunk') return;
+        emit(type, payload);
+      };
       try {
         const s = await settings.getSettings();
         const maxChain = Math.max(1, Math.min(5, Number(s.agent?.maxChain) || 2));
+        const allowSilent = !!s.agent?.silentTool;
+        chainStopFlag = false;
         if (s.agent?.enabled) {
           const thread = [...messages];
-          // Length of the visible finished passes — the renderer's network
-          // buffer holds only pass texts (bridge dropped), so this is the
-          // slice point where a finished pass hands over to the next one
-          // mid-turn (bubble stays in 'thinking' until the whole chain ends).
-          const visibleLen = () => passes.reduce((n, p) => n + (p ? p.length : 0), 0);
           for (;;) {
-            // Run #2+ text is a woven answer with real data in hand — a
-            // visible reply of its own. Run #1 is the bridge (ai.js drops it).
-            if (count > 0) passes.push(scrubLeak(cur.text).trim());
+            if (count > 0) {
+              const passText = scrubLeak(cur.text).trim();
+              passes.push(passText);
+              // Voice first: the renderer shows/speaks this pass now; the
+              // tool it calls runs only after the speech ends — unless the
+              // pass used "silent" (instant resume) or the text vanished.
+              const silent = !passText || (allowSilent && cur.silent === true);
+              emit('chat:passDone', { index: count, text: passText, silent });
+              log.info('[toolbox]', `chain pass ${count}/${maxChain}${silent ? ' silent' : ''} len=${passText.length}`);
+              await waitPassSpoken();
+              if (chainStopFlag) { stopped = true; break; }
+            }
             if (cur.stopped) { stopped = true; break; }
             if (!cur.tool || count >= maxChain) break;
             count++;
             const call = cur.tool;
-            emit('chat:tool', { name: call.name, chain: count, maxChain, prevLen: visibleLen() });
+            emit('chat:tool', { name: call.name, chain: count, maxChain });
             const exec = await toolbox.execute(call.name, call.args);
             // History: while she works on the tool, the user is idle — the
             // same bracketed asterisk pattern the shake scenes use. Thread
@@ -530,14 +560,7 @@ app.whenReady().then(async () => {
             notes.push(`*Waiting while Kanna uses her ${call.name} tool…*`);
             thread.push({ role: 'user', content: notes[notes.length - 1] });
             thread.push({ role: 'user', content: toolNote(call, exec.text, count < maxChain) });
-            // New visual pass: when a previous reply exists on screen, tell
-            // the renderer to slide it into the small prior slot and start
-            // fresh dots for the next pass. (Without this the two replies
-            // would type into one message.)
-            if (passes.some(Boolean)) emit('chat:pass', { index: passes.length + 1, prevLen: visibleLen() });
-            // Live stream, no hold: she types the moment the tool note
-            // arrives — reply-per-tool, not wait-for-all-tools.
-            cur = await ai.runChat(thread, emit, undefined, { noTriggers: true });
+            cur = await ai.runChat(thread, chainEmit, undefined, { noTriggers: true });
           }
         }
       } catch (err) {
@@ -557,7 +580,21 @@ app.whenReady().then(async () => {
     });
   });
 
-  ipcMain.on('chat:stop', () => ai.abortActive());
+  ipcMain.on('chat:stop', () => {
+    ai.abortActive();
+    // Speech-sequenced chain: unblock the pass-wait so the loop unwinds.
+    chainStopFlag = true;
+    const w = chainWaiter;
+    chainWaiter = null;
+    if (w) w();
+  });
+
+  // Renderer finished speaking one chain pass (or skipped it silently).
+  ipcMain.on('kanna:chainResume', () => {
+    const w = chainWaiter;
+    chainWaiter = null;
+    if (w) w();
+  });
 
   // Borderless window controls.
   ipcMain.on('win:min', () => win?.minimize());

@@ -36,14 +36,17 @@ contextBridge.exposeInMainWorld('kanna', {
   onMeta: (listener) => {
     ipcRenderer.on('chat:meta', (_e, meta) => listener(meta));
   },
-  // Toolbox (agent mode): chain lifecycle — fired when a real tool runs
-  // (onTool) and before each continuation pass starts typing (onPass).
+  // Toolbox (agent mode): fired when a real tool runs.
   onTool: (listener) => {
     ipcRenderer.on('chat:tool', (_e, info) => listener(info));
   },
-  onPass: (listener) => {
-    ipcRenderer.on('chat:pass', (_e, info) => listener(info));
+  // Speech-sequenced chain: each woven pass arrives whole (chat:passDone);
+  // the renderer speaks it and calls chainResume() when done (or at once
+  // for silent passes) so main runs the next tool.
+  onPassDone: (listener) => {
+    ipcRenderer.on('chat:passDone', (_e, info) => listener(info));
   },
+  chainResume: () => ipcRenderer.send('kanna:chainResume'),
   // Main-pushed canned reactions (shake dizzy/angry lines).
   onShake: (listener) => {
     ipcRenderer.on('kanna:shake', (_e, g) => listener(g));

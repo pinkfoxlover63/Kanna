@@ -22,6 +22,7 @@ const DEFAULT_SETTINGS = {
   persona: DEFAULT_PERSONA,
   agent: {
     enabled: false, // Agent mode: lets the model call real desktop tools (toolbox)
+    silentTool: true, // Voice-sequenced chaining: the model may "silent" an intermediate reply so the next tool runs right away
   },
   openai: { apiKey: '', model: 'gpt-4o-mini' },
   anthropic: { apiKey: '', model: 'claude-sonnet-4-5' },

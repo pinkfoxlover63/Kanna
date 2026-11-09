@@ -73,6 +73,10 @@
           <span>Agent mode (toolbox)<input id="agent-enabled" type="checkbox"></span>
           <p class="hint">Lets her use real desktop tools when a question needs facts she can't know — currently <code>time</code> (today's date/time) and <code>weather</code> (local weather). She can chain up to Max chained tools per turn, one reply per tool. Best with capable models: small models often garble the tool-call JSON and fumble chains. Off by default: with agent mode off she never calls tools.</p>
         </label>
+        <label class="field">
+          <span>Silent chaining (skip voice mid-chain)<input id="agent-silent" type="checkbox"></span>
+          <p class="hint">Agent mode only. She speaks each tool reply one by one; with this on the model may mark an intermediate reply silent so the next tool runs without waiting for her voice. The final reply always speaks. On by default.</p>
+        </label>
       </div>
 
       <div class="tab-panel" data-panel="memory">

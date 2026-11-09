@@ -90,6 +90,14 @@
   let liveHold = null;       // model said whether this mood should stick
   let holdFace = false;      // true while a held mood is on her face
 
+  // Speech-sequenced agent chain: main dispatches each woven pass whole
+  // (chat:passDone) — the renderer shows and speaks it one by one, then
+  // unblocks main's next tool. resolve skips the stock typing flow when
+  // passes were handled this way.
+  let chainPassesHandled = 0;   // passDone events handled this turn
+  let chainPrevText = '';       // pass currently on the big spot
+  let chainResumeTimer = null;
+
   // TTS (built-in speechSynthesis for now; provider selectable in settings).
   let tts = { provider: 'builtin', voice: '', rate: 1, pitch: 1, muted: false };
   let shouldSpeak = false;   // set per turn; finalize() speaks only if true
@@ -801,6 +809,9 @@ async function runShakeAI(shakes) {
     received = '';
     pending = '';
     finishing = false;
+    chainPassesHandled = 0;
+    chainPrevText = '';
+    if (chainResumeTimer) { clearTimeout(chainResumeTimer); chainResumeTimer = null; }
     liveMood = 'neutral';
     liveSpeed = 1;
     liveHold = null;
@@ -813,7 +824,32 @@ async function runShakeAI(shakes) {
 
     try {
       const result = await window.kanna.sendChat(history.slice(-24));
-      if (received) {
+      if (chainPassesHandled > 0) {
+        // Speech-sequenced chain resolved: every pass was already shown and
+        // spoken through chat:passDone — skip the stock type/speech flow
+        // (the network buffer holds nothing useful at this point), make
+        // sure the voice is really off (stop unwinds mid-utterance), and
+        // file the passes into history in order.
+        if (chainResumeTimer) { clearTimeout(chainResumeTimer); chainResumeTimer = null; }
+        text += pending;          // unswept tail of the last spoken pass
+        pending = '';
+        finishing = false;
+        speechPhaseActive = false;
+        if (result.stopped) cancelSpeech();
+        if (Array.isArray(result.passes) && result.passes.length && result.passes.some((p) => String(p || '').trim())) {
+          const notes = Array.isArray(result.notes) ? result.notes : [];
+          result.passes.forEach((pass, i) => {
+            const note = notes[i];
+            if (note) history.push({ role: 'user', content: note });
+            if (String(pass || '').trim()) history.push({ role: 'assistant', content: pass });
+          });
+        } else if (text.trim()) {
+          history.push({ role: 'assistant', content: text.trim() });
+        }
+        phase = 'idle';
+        if (text) renderMarkdownInto(mainEl, text); // paint the typed tail now
+        finalize();
+      } else if (received) {
         // Phase-2 chain: each visible reply becomes its own turn, with the
         // wait notes (user-side bracket lines, never displayed) sitting in
         // the gaps — the same pattern the shake scenes use.
@@ -903,45 +939,88 @@ async function runShakeAI(shakes) {
   window.kanna.onTool((info) => {
     if (!info?.name) return;
     toast(`Used her ${info.name} tool…`);
-    // Belt and braces: a chained tool call (chain >= 2) implies a finished
-    // reply is on screen — promote it even if the chat:pass event got
-    // missed. No-op when nothing is visible yet.
-    if (info.chain > 1) promotePass();
   });
 
-  // Phase-2 chain: a new pass is about to type. The reply already on
-  // screen slides into the small previous-turn slot — after flushing any
-  // typing backlog so the slow pace can't leak into the next pass — and
-  // the big spot gets a fresh pair of dots for the next pass.
-  //
-  // Precise mode: the box stays in its buffering 'thinking' state until
-  // the whole chain resolves, so nothing has typed yet — main therefore
-  // sends `prevLen`, the byte length of the finished passes, and we slice
-  // them out of the network buffer ourselves: done text promotes to the
-  // small slot, stream buffers restart on the remainder.
-  const promotePass = (info) => {
-    if (!busy) return;
-    const prevLen = Number(info?.prevLen) || 0;
-    if (prevLen > 0 && received.length > 0) {
-      const done = received.slice(0, prevLen);
-      const rest = received.slice(prevLen);
-      renderMarkdownInto(priorEl, done);
-      received = rest;
-      pending = rest;
-    } else if (text) {
-      text += pending;            // untyped backlog belongs to THIS pass
-      pending = '';
-      textFrac = 0;
-      renderMarkdownInto(priorEl, text);
-    }
-    text = '';
-    textFrac = 0;
-    mainEl.classList.remove('error');
-    mainEl.classList.add('typing');
-    mainEl.replaceChildren(makeDots());
-    scrollToBottom(true);
+  // Speech-sequenced chain: main hands over each woven pass whole after
+  // its stream ends (chain chunks stay suppressed). Show it, speak it,
+  // then hand control back — main runs the pass's tool once the voice
+  // says her line. Silent passes (or a vanished tool key) display
+  // instantly and resume at once, so the chain never stalls on them.
+  const chainResumeNow = () => {
+    if (chainResumeTimer) { clearTimeout(chainResumeTimer); chainResumeTimer = null; }
+    try { window.kanna.chainResume?.(); } catch { /* window gone */ }
   };
-  window.kanna.onPass(promotePass);
+  window.kanna.onPassDone((info) => {
+    if (!busy) { chainResumeNow(); return; }
+    chainPassesHandled++;
+    const passText = String(info?.text || '');
+    const silent = !!info?.silent;
+    // Slide the fully spoken previous pass into the small slot. Its full
+    // text lives in chainPrevText — the big-spot typewriter may have been
+    // interrupted mid-pass, so text/pending can't be trusted for it.
+    const doneText = chainPrevText;
+    text = '';
+    pending = '';
+    textFrac = 0;
+    if (chainPassesHandled > 1 && doneText.trim()) renderMarkdownInto(priorEl, doneText.trim());
+    chainPrevText = passText;
+    if (!passText) { chainResumeNow(); return; }
+
+    // makeDots start of the pass: face swaps live via onMeta mid-pass.
+    phase = 'speaking';
+    if (mainEl.classList.contains('typing')) {
+      mainEl.classList.remove('typing');
+      mainEl.replaceChildren();
+      setEmote(liveMood, false);
+    }
+    const speak = !silent && !tts?.muted;
+    if (!speak) {
+      // Silent pass: show instantly, chain continues right away.
+      text = passText;
+      renderMarkdownInto(mainEl, text);
+      scrollToBottom(true);
+      chainResumeNow();
+      return;
+    }
+    // Spoken pass. Start the voice and the typewriter together; resume
+    // when the utterance ends (builtin resolves at onend) or after the
+    // audio duration for cloud providers.
+    const spoken = textForSpeech(passText);
+    const speechPromise = speakChunk(spoken); // builtin ends at onend; cloud resolves when audio starts
+    pending = passText;
+    text = '';
+    if (tts?.provider === 'builtin') {
+      // No real duration from builtin — pace typing to the estimate so
+      // text and voice land together around the same second.
+      const est = estimateDurationMs(spoken, Number(tts.rate) || 1);
+      targetCps = Math.max(0.001, spoken.length / (est / 1000));
+    }
+    speechPhaseActive = true;
+    if (!drainTimer) drainTimer = requestAnimationFrame(pace);
+    speechPromise.then((speakInfo) => {
+      const durMs = Number(speakInfo?.durationMs) || 0;
+      if (tts?.provider === 'builtin') {
+        // Utterance ended. In case the typewriter lagged behind the voice,
+        // paint the pass whole and sweep it — then the chain resumes.
+        speechPhaseActive = false;
+        text = passText;
+        pending = '';
+        renderMarkdownInto(mainEl, text);
+        chainResumeNow();
+        return;
+      }
+      if (durMs > 0) {
+        // Cloud: audio is playing; typing paces to its real duration.
+        targetCps = Math.max(0.001, spoken.length / (durMs / 1000));
+        chainResumeTimer = setTimeout(chainResumeNow, durMs + 200);
+      } else {
+        // No usable duration: resume after a rough estimate so the chain
+        // still advances when the audio length is unknown.
+        const est = estimateDurationMs(spoken, Number(tts.rate) || 1);
+        chainResumeTimer = setTimeout(chainResumeNow, est + 200);
+      }
+    }).catch(() => chainResumeNow());
+  });
 
   // The model's directions for this reply. Mood is the first key of the JSON
   // reply, so it lands before any words: she sets her face while still

@@ -89,6 +89,20 @@ Backlog of things not built yet. Pick from the top when starting something new.
 
 ## Completed recently (v0.1.3)
 
+- [x] **Toolbox voice-sequenced chaining + silent passes** — the voice leads
+  the chain now: each woven pass is dispatched whole to the renderer via
+  `chat:passDone` {index, text, silent} and main awaits `kanna:chainResume`
+  before running that pass's tool — she speaks each tool result one by one,
+  next tool only after her voice finishes (~5 min safety ceiling per wait).
+  Reader gains an optional `"silent": true` key (ai.js); `agent.silentTool`
+  (default on, Settings → Personality toggle) lets an intermediate pass
+  mark itself silent to skip its voice and continue mid-chain instantly —
+  final reply never silent. Old `chat:pass` promote machinery removed
+  (passDone replaces it); battery of resume paths: builtin speech ends via
+  `onend` (then any clipped typewriter tail is painted), cloud providers
+  resume after the audio `durationMs`, muted/silent/empty passes resume
+  instantly. `chat:stop` also unwinds a mid-voice wait (cancels speech).
+
 - [x] **Toolbox Phase 2 — weather tool + reply-per-tool chaining** — new
   `weather` tool in `src/main/toolbox.js` (wttr.in one-line lookup, no key,
   ~9 s abort window; executor is async). Chain loop in `chat:send`: every
