@@ -1001,12 +1001,15 @@ async function runShakeAI(shakes) {
         return;
       }
       speechPhaseActive = false;
-      targetCps = CATCHUP_MAX;
+      targetCps = TYPE_CPS;           // normal readable flow while muted
       text = '';                 // pacer types this pass fresh (text starts
       pending = passText;        // empty or it would be painted twice)
       textFrac = 0;
       if (!drainTimer) drainTimer = requestAnimationFrame(pace);
-      chainResumeNow();
+      // Wait for the typed flow to land before the next tool/turn, so
+      // messages don't pile up; mute means no voice, not instant chain skip.
+      const est = Math.max(450, Math.ceil((passText.length / TYPE_CPS) * 1000));
+      chainResumeTimer = setTimeout(chainResumeNow, est);
       return;
     }
     // Spoken pass. Start the voice and the typewriter together; resume
