@@ -1002,8 +1002,8 @@ async function runShakeAI(shakes) {
       }
       speechPhaseActive = false;
       targetCps = CATCHUP_MAX;
-      text = '';                 // pacer types this pass fresh (text starts
-      pending = passText;        // empty or it would be painted twice)
+      text = passText;
+      pending = passText;
       textFrac = 0;
       if (!drainTimer) drainTimer = requestAnimationFrame(pace);
       chainResumeNow();
