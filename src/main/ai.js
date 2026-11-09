@@ -396,39 +396,6 @@ function createReplyReader() {
   function finish() {
     if (r.mode === 'json') decode();
     scanTool();
-    // Repair malformed/gluied JSON: parse a clean first-root object and
-    // reset the visible text so a trailing second `{"tool":...}` can never
-    // leak into the bubble/voice.
-    try {
-      let start = r.raw.indexOf('{');
-      if (start >= 0) {
-        let depth = 0, str = false, esc = false;
-        for (let i = start; i < r.raw.length; i++) {
-          const ch = r.raw[i];
-          if (esc) esc = false;
-          else if (ch === '\\') esc = true;
-          else if (ch === '"') str = !str;
-          else if (!str) {
-            if (ch === '{') depth++;
-            else if (ch === '}') { depth--; if (!depth) {
-              const j = JSON.parse(r.raw.slice(start, i + 1));
-              if (j && typeof j === 'object') {
-                if (typeof j.text === 'string' && j.text.trim()) {
-                  r.out = j.text;
-                  r.textDone = true;
-                }
-                if (j.tool && typeof j.tool === 'object' && j.tool.name) {
-                  const name = String(j.tool.name).trim();
-                  const args = j.tool.args && typeof j.tool.args === 'object' && !Array.isArray(j.tool.args) ? j.tool.args : {};
-                  r.tool = { name, args };
-                }
-              }
-              break;
-            } }
-          }
-        }
-      }
-    } catch { /* malformed root — keep best decoded output */ }
     // Protocol fell apart before any visible text: show the raw output
     // rather than an empty bubble.
     if (r.mode === 'json' && r.out === '' && !r.textDone) r.out = r.raw.trim();

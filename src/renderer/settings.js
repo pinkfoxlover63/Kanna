@@ -34,8 +34,6 @@
     ttsPiperGpu: $('#tts-piper-gpu'),
     agentEnabled: $('#agent-enabled'),
     agentSilent: $('#agent-silent'),
-    agentMaxChain: $('#agent-maxchain'),
-    agentMaxChainVal: $('#agent-maxchain-val'),
     toolSwitches: $('#tool-switches'),
   };
 
@@ -313,8 +311,6 @@
     // --- toolbox (agent mode) ---
     els.agentEnabled.checked = !!(draft.agent && draft.agent.enabled);
     els.agentSilent.checked = draft.agent?.silentTool !== false; // default on
-    els.agentMaxChain.value = String(Math.max(1, Math.min(5, Number(draft.agent?.maxChain) || 2)));
-    els.agentMaxChainVal.textContent = els.agentMaxChain.value;
     renderToolSwitches();
 
     // --- TTS ---
@@ -394,12 +390,12 @@
     draft[p].model = els.model.value.trim();
     if (p === 'custom') draft[p].baseUrl = els.baseUrl.value.trim();
     draft.persona = els.persona.value.trim();
-    draft.agent = { enabled: !!els.agentEnabled.checked, silentTool: !!els.agentSilent.checked, maxChain: Math.max(1, Math.min(5, Number(els.agentMaxChain.value) || 2)), disabledTools: collectDisabledTools() };
+    draft.agent = { enabled: !!els.agentEnabled.checked, silentTool: !!els.agentSilent.checked, disabledTools: collectDisabledTools() };
 
     const saved = await window.kanna.saveSettings({
       provider: p,
       persona: draft.persona,
-      agent: { enabled: !!els.agentEnabled.checked, silentTool: !!els.agentSilent.checked, maxChain: Math.max(1, Math.min(5, Number(els.agentMaxChain.value) || 2)), disabledTools: collectDisabledTools() },
+      agent: { enabled: !!els.agentEnabled.checked, silentTool: !!els.agentSilent.checked, disabledTools: collectDisabledTools() },
       openai: { apiKey: draft.openai.apiKey, model: draft.openai.model },
       anthropic: { apiKey: draft.anthropic.apiKey, model: draft.anthropic.model },
       gemini: { apiKey: draft.gemini.apiKey, model: draft.gemini.model },
@@ -482,10 +478,6 @@
     draft.tts.voice = els.ttsVoice.value;
     if (!draft.tts.voiceByProvider) draft.tts.voiceByProvider = {};
     draft.tts.voiceByProvider[draft.tts.provider || 'builtin'] = els.ttsVoice.value;
-  });
-
-  els.agentMaxChain.addEventListener('input', () => {
-    els.agentMaxChainVal.textContent = els.agentMaxChain.value;
   });
 
   els.ttsRate.addEventListener('input', () => {

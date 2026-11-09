@@ -81,11 +81,6 @@
           <span>Silent chaining (skip voice mid-chain)<input id="agent-silent" type="checkbox"></span>
           <p class="hint">Agent mode only. She speaks each tool reply one by one; with this on the model may mark an intermediate reply silent so the next tool runs without waiting for her voice. The final reply always speaks. On by default.</p>
         </label>
-        <label class="field">
-          <span>Max chained tools per turn: <span id="agent-maxchain-val" class="tool-name">2</span></span>
-          <input id="agent-maxchain" type="range" min="1" max="5" step="1" value="2">
-          <p class="hint">Agent mode only. How many linked tool-calls she may run in one answer (time, weather, …). Default 2 keeps replies snappy; bigger models can dig deeper per turn.</p>
-        </label>
         <label class="field" id="tool-switches-field">
           <span>Tool switches (per tool)</span>
           <div id="tool-switches" class="tool-switches"></div>
