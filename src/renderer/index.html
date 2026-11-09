@@ -20,6 +20,7 @@
       <nav class="tabs" role="tablist">
         <button type="button" class="tab active" data-tab="brain" role="tab"><i class="fa-solid fa-brain"></i> Brain</button>
         <button type="button" class="tab" data-tab="personality" role="tab"><i class="fa-solid fa-masks-theater"></i> Personality</button>
+        <button type="button" class="tab" data-tab="tools" role="tab"><i class="fa-solid fa-toolbox"></i> Tools</button>
         <button type="button" class="tab" data-tab="memory" role="tab"><i class="fa-solid fa-box-archive"></i> Memory</button>
         <button type="button" class="tab" data-tab="mood" role="tab"><i class="fa-solid fa-face-smile"></i> Mood</button>
         <button type="button" class="tab" data-tab="voice" role="tab"><i class="fa-solid fa-volume-high"></i> Voice</button>
@@ -69,6 +70,9 @@
           <textarea id="persona" rows="8" spellcheck="false"></textarea>
           <p class="hint">Who Kanna is and how she talks — applied to every reply, saved with the Save button.</p>
         </label>
+      </div>
+
+      <div class="tab-panel" data-panel="tools">
         <label class="field">
           <span>Agent mode (toolbox)<input id="agent-enabled" type="checkbox"></span>
           <p class="hint">Lets her use real desktop tools when a question needs them — currently <code>time</code> (date/time), <code>weather</code> (wttr.in lookup), <code>remember</code> (self-write one durable memory fact), <code>background</code> (swap her room's wallpaper scene), and <code>hide</code> (she tucks her window away; you summon her back with Ctrl+Shift+K). She can chain up to Max chained tools per turn, one reply per tool. Best with capable models: small models often garble the tool-call JSON and fumble chains. Off by default: with agent mode off she never calls tools.</p>
