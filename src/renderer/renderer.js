@@ -985,15 +985,23 @@ async function runShakeAI(shakes) {
     }
     const speak = !silent && !tts?.muted;
     if (!speak) {
-      // Silent pass: the bubble shows only "…" as a placeholder (the full
-      // text still feeds history and the model thread); the chain resumes
-      // right away instead of waiting for a voice that never plays.
-      // The prior-slot handoff carries the placeholder too, so a silent
-      // reply never surfaces in full even after the next pass lands.
-      chainPrevText = '…';
-      text = '…';
-      renderMarkdownInto(mainEl, text);
-      scrollToBottom(true);
+      // TTS muted: voice is off but nothing is hidden — stamp the pass out
+      // at catch-up pace and keep the chain moving.
+      if (silent) {
+        // Silent pass: the bubble shows only "…" as a placeholder.
+        chainPrevText = '…';
+        text = '…';
+        renderMarkdownInto(mainEl, text);
+        scrollToBottom(true);
+        chainResumeNow();
+        return;
+      }
+      speechPhaseActive = false;
+      targetCps = CATCHUP_MAX;
+      text = '';                 // pacer types this pass fresh
+      pending = passText;
+      textFrac = 0;
+      if (!drainTimer) drainTimer = requestAnimationFrame(pace);
       chainResumeNow();
       return;
     }
