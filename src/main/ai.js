@@ -459,7 +459,7 @@ function composeChatSystem(settings, styleNote = '') {
     const toolbox = require('./toolbox');
     let toolBlock = TOOL_DIRECTION.replace('{{TOOLS}}', toolbox.describeForPrompt());
     if (settings.agent?.silentTool) {
-      toolBlock += '\n- Element "silent": true on an INTERMEDIATE reply (one that still carries a "tool" key) skips speaking it, so the chain continues immediately. Never silence the final reply, and only stay silent when the user would not miss it.';
+      toolBlock += '\n- Element "silent": true on an INTERMEDIATE reply (one that still carries a "tool" key) skips the VOICE for that reply, so the chain continues immediately. Silence never changes the words: "text" must still be the complete woven reply with the tool data spelled out — never "..." or a placeholder. Never silence the final reply, and only stay silent when the user would not miss it.';
     }
     parts.push(toolBlock);
   }

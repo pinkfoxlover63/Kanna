@@ -534,7 +534,11 @@ app.whenReady().then(async () => {
           const thread = [...messages];
           for (;;) {
             if (count > 0) {
-              const passText = scrubLeak(cur.text).trim();
+              const rawPass = scrubLeak(cur.text).trim();
+              // Dots-only text ("...", "…") is the model punting on a pass
+              // — treat it as empty so the chain skips it instantly instead
+              // of showing literal dots as a reply.
+              const passText = /^[.\s…·。･・]+$/.test(rawPass) ? '' : rawPass;
               passes.push(passText);
               // Voice first: the renderer shows/speaks this pass now; the
               // tool it calls runs only after the speech ends — unless the
