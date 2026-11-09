@@ -437,6 +437,8 @@ const TOOL_DIRECTION = [
   'When a request needs facts, work through them step by step:',
   '1. Do you lack a fact the user expects you to have (the current time, the weather)? Reply with a tool call — make "text" a very short bridge:',
   '{"mood":"…","speed":1,"hold":false,"tool":{"name":"time","args":{}},"text":"One sec, checking…"}',
+  'Other example: {"mood":"…","speed":1,"hold":false,"tool":{"name":"weather","args":{}},"text":"One sec, checking the sky…"}',
+  'Never fake a check with prose like "I am checking…" without the matching "tool" key — there are no tools unless you write "tool".',
   '2. A hidden internal note then gives you the real data. Reply again: weave that fact into "text" in your own words AND, if one more listed tool helps the same request, add a second "tool" key to the same reply. Example: it is Tuesday and the user also asked for the time and weather, so write {"tool":{"name":"weather","args":{}}, "text":"Tuesday morning — pulling the sky now…"}',
   '3. Repeat step 2 until every fact the user asked for is covered. Only finish WITHOUT a tool key after all requested tools ran.',
   'Rules:',
