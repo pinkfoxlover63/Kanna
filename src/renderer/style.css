@@ -869,27 +869,11 @@ header {
   display: flex;
   gap: 6px;
   margin-bottom: 14px;
-  /* Six tabs no longer fit a 340px row in one line — the bar scrolls
-     horizontally instead of squashing labels; scrollbars stay thin. */
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: thin;
-  overscroll-behavior-x: contain;
-  padding-bottom: 3px;
 }
-
-.tabs::-webkit-scrollbar { height: 6px; }
-.tabs::-webkit-scrollbar-thumb {
-  background: rgba(155, 140, 255, 0.25);
-  border-radius: 6px;
-  border: 1px solid transparent;
-  background-clip: content-box;
-}
-.tabs::-webkit-scrollbar-track { background: transparent; }
 
 .tab {
-  flex: 0 0 auto;
-  padding: 8px 10px;
+  flex: 1;
+  padding: 8px 4px;
   border: 1px solid transparent;
   border-radius: 10px;
   background: transparent;
