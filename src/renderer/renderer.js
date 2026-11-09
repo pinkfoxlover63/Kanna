@@ -975,8 +975,13 @@ async function runShakeAI(shakes) {
     }
     const speak = !silent && !tts?.muted;
     if (!speak) {
-      // Silent pass: show instantly, chain continues right away.
-      text = passText;
+      // Silent pass: the bubble shows only "…" as a placeholder (the full
+      // text still feeds history and the model thread); the chain resumes
+      // right away instead of waiting for a voice that never plays.
+      // The prior-slot handoff carries the placeholder too, so a silent
+      // reply never surfaces in full even after the next pass lands.
+      chainPrevText = '…';
+      text = '…';
       renderMarkdownInto(mainEl, text);
       scrollToBottom(true);
       chainResumeNow();
