@@ -616,10 +616,9 @@ app.whenReady().then(async () => {
             if (lastPass) thread.push({ role: 'assistant', content: lastPass });
             notes.push(`*Waiting while Kanna uses her ${call.name} tool…*`);
             thread.push({ role: 'user', content: notes[notes.length - 1] });
-            const noteFed = toolNote(call, exec.text, count < maxChain);
-            if (!app.isPackaged) log.info('[chat]', 'fed note=' + noteFed.replace(/\r?\n/g, ' '));
-            thread.push({ role: 'user', content: noteFed });
-            cur = await ai.runChat(thread, chainEmit, undefined, { noTriggers: true });            log.info('[toolbox]', 'run #' + (count + 1) + ' answer landed; next tool: ' + (cur?.tool?.name || 'none') + ' leak=' + !!cur?.leak + ' preview=' + String(scrubLeak(cur?.text || '')).slice(0, 240));
+            thread.push({ role: 'user', content: toolNote(call, exec.text, count < maxChain) });
+            cur = await ai.runChat(thread, chainEmit, undefined, { noTriggers: true });
+            log.info('[toolbox]', 'run #' + (count + 1) + ' answer landed; next tool: ' + (cur?.tool?.name || 'none') + ' leak=' + !!cur?.leak + ' preview=' + String(scrubLeak(cur?.text || '')).slice(0, 240));
           }
         }
       } catch (err) {
