@@ -633,6 +633,15 @@ app.whenReady().then(async () => {
 
   setupMenu();
   await createWindow();
+  // Background timer (toolbox): when a timer expires, prompt the renderer
+  // to run a new Kanna turn with "*Kanna's timer ringing*" as the user turn.
+  toolbox.setTimerHandler?.(({ ms }) => {
+    const id = String(Date.now());
+    setTimeout(() => {
+      if (win && !win.isDestroyed()) win.webContents.send('kanna:timerRinging', { id, ms });
+    }, ms);
+    return { text: `timer started for ${Math.round(ms / 1000)} seconds (${(ms / 60000).toFixed(1)} minutes); she can keep talking or let time pass, then she will get the alarm.` };
+  });
   try {
     const initial = await settings.getSettings();
     // Phase 4: bind the per-tool switches before the first chat can compose

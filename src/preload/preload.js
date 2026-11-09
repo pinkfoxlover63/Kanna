@@ -54,6 +54,9 @@ contextBridge.exposeInMainWorld('kanna', {
   onBackground: (listener) => {
     ipcRenderer.on('kanna:background', (_e, info) => listener(info));
   },
+  onTimerRinging: (listener) => {
+    ipcRenderer.on('kanna:timerRinging', (_e, info) => listener(info));
+  },
   // Main-pushed canned reactions (shake dizzy/angry lines).
   onShake: (listener) => {
     ipcRenderer.on('kanna:shake', (_e, g) => listener(g));

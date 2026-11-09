@@ -60,6 +60,7 @@
   let settings = null;
   let history = [];           // { role: 'user' | 'assistant', content }
   let busy = false;
+  let pendingTimerRinging = 0;
   let phase = 'idle';         // 'idle' | 'thinking' | 'speaking'
   let speechPhaseActive = false; // typing is paced to a full-reply TTS duration
   let targetCps = 5;         // chars/sec used while speaking
@@ -761,8 +762,9 @@ async function runShakeAI(shakes) {
     inputEl.style.height = `${Math.min(inputEl.scrollHeight, 96)}px`;
   }
 
-  async function send() {
-    const content = inputEl.value.trim();
+  async function send(content) {
+    const effectiveContent = (typeof content === 'string' ? content.trim() : (inputEl.value || '').trim());
+    content = effectiveContent;
     if (!content || busy) return;
 
     if (!isConfigured(settings)) {
@@ -956,6 +958,11 @@ async function runShakeAI(shakes) {
   // then hand control back — main runs the pass's tool once the voice
   // says her line. Silent passes (or a vanished tool key) display
   // instantly and resume at once, so the chain never stalls on them.
+  // background timer ringing: run a new Kanna turn with the pseudo user turn
+  window.kanna.onTimerRinging?.((info) => {
+    if (busy) { pendingTimerRinging++; return; }
+    send('*Kanna\'s timer ringing*');
+  });
   const chainResumeNow = () => {
     if (chainResumeTimer) { clearTimeout(chainResumeTimer); chainResumeTimer = null; }
     try { window.kanna.chainResume?.(); } catch { /* window gone */ }
@@ -1141,6 +1148,10 @@ async function runShakeAI(shakes) {
     shouldSpeak = false;
     speechPhaseActive = false;
     phase = 'idle';
+    if (pendingTimerRinging > 0) {
+      pendingTimerRinging--;
+      setTimeout(() => { if (!busy) send('*Kanna\'s timer ringing*'); }, 0);
+    }
   }
 
   // --- small bits ----------------------------------------------------------

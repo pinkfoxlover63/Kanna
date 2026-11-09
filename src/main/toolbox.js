@@ -260,7 +260,27 @@ async function execute(name, args) {
   }
 }
 
+
+// --- background timer (main registers expiry callback) ---------------------
+let timerHandler = null;
+function setTimerHandler(fn) { timerHandler = typeof fn === "function" ? fn : null; }
+function runTimer(args) {
+  let ms = null;
+  if (typeof args?.seconds === "number" && args.seconds > 0) ms = args.seconds * 1000;
+  else if (typeof args?.minutes === "number" && args.minutes > 0) ms = args.minutes * 60000;
+  if (!Number.isFinite(ms) || ms <= 0) return { ok: false, text: "ERROR timer needs positive minutes or seconds (max 60)" };
+  if (ms > 3600000) ms = 3600000;
+  if (!timerHandler) return { ok: false, text: "ERROR timer unavailable (main not wired)" };
+  return timerHandler({ ms });
+}
+TOOLS.push({
+  name: "timer",
+  description: "start a background timer for minutes/seconds; returns immediately and rings after the delay – use for delayed follow-ups or reminders; you then get a *Kanna's timer ringing* turn",
+  args: { type: "object", properties: { minutes: { type: "number" }, seconds: { type: "number" } }, additionalProperties: false },
+  run: runTimer,
+});
 module.exports = {
+  setTimerHandler,
   describeForPrompt,
   execute,
   has: byName,
