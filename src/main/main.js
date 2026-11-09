@@ -596,8 +596,7 @@ app.whenReady().then(async () => {
           for (;;) {
             if (chainStopFlag) { stopped = true; break; }
             if (count > 0) {
-              let passText = scrubLeak(cur.text).trim();
-              if (!passText) passText = '…';
+              const passText = scrubLeak(cur.text).trim();
               passes.push(passText);
               // Voice first: the renderer shows/speaks this pass now; the
               // tool it calls runs only after the speech ends — unless the
