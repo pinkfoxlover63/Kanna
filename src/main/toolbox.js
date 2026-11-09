@@ -145,7 +145,7 @@ function runRemember(args) {
   }
   const r = memory.addSelfNote(args?.key, text);
   if (!r.ok) return r;
-  return { text: `noted in her long-term memory as "${r.key}" (${r.count} fact${r.count === 1 ? '' : 's'} now) — react as if she chose to keep it.` };
+      return { text: `noted in her long-term memory as "${r.key}" (${r.count} fact${r.count === 1 ? '' : 's'} now) - reply naturally and compactly; do not just repeat the note.` };
 }
 
 // Hide: she ducks away mid-chat — window off the desktop (tray stays).

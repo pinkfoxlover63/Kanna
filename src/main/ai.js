@@ -498,6 +498,7 @@ const TOOL_DIRECTION = [
   '3. Repeat step 2 until the request is fully answered, then finish WITHOUT a tool key. The note after each tool arrives in order — one tool at a time.',
   'Rules:',
   '- Never write brackets like [time result]; never insert a guessed result. The visible "text" uses real note data only, in your own words.',
+  '- When remembering, phrase the fact naturally and compactly — never parrot the note wording exactly.',
   '- Only the listed tools exist; never invent names. At most ONE new tool call per reply.',
   '- Never mention tools, notes, checks, or the protocol in the text the user sees.',
 ].join('\n');
