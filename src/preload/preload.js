@@ -9,6 +9,9 @@ contextBridge.exposeInMainWorld('kanna', {
   getMemory: () => ipcRenderer.invoke('memory:get'),
   removeMemory: (key) => ipcRenderer.invoke('memory:remove', key),
   clearMemory: () => ipcRenderer.invoke('memory:clear'),
+  // Phase 4 toolbox: tool switches (Settings) + usage log (History drawer).
+  listTools: () => ipcRenderer.invoke('tools:list'),
+  toolLog: () => ipcRenderer.invoke('tools:log'),
   // Mood debug panel (Settings -> Mood): live snapshot + reset buttons.
   getMood: () => ipcRenderer.invoke('affect:get'),
   resetMood: () => ipcRenderer.invoke('affect:reset'),

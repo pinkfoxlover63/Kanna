@@ -379,6 +379,8 @@ app.whenReady().then(async () => {
       // the fresh flags the renderer sends along.
       tts.stopPiperServer();
     }
+    // Phase 4: per-tool switches re-bind right away (prompt + hard gate).
+    toolbox.setDisabledTools(saved?.agent?.disabledTools);
     return saved;
   });
   ipcMain.handle('models:list', (_e, provider) => ai.listModels(provider));
@@ -404,6 +406,9 @@ app.whenReady().then(async () => {
   ipcMain.handle('memory:get', () => ({ entries: memory.load() }));
   ipcMain.handle('memory:remove', (_e, key) => ({ entries: memory.removeEntry(String(key || '')) }));
   ipcMain.handle('memory:clear', () => ({ entries: memory.clearAll() }));
+  // Phase 4 toolbox settings + tool usage log (History drawer → Tool log).
+  ipcMain.handle('tools:list', () => toolbox.toolsForSettings());
+  ipcMain.handle('tools:log', () => toolbox.usageSnapshot());
 
   // Phase 5: mood debug panel (Settings -> Mood). Read-only snapshot plus a
   // mood reset and a separate relationship reset (the affinity survives a
@@ -630,6 +635,9 @@ app.whenReady().then(async () => {
   await createWindow();
   try {
     const initial = await settings.getSettings();
+    // Phase 4: bind the per-tool switches before the first chat can compose
+    // a system prompt.
+    toolbox.setDisabledTools(initial?.agent?.disabledTools);
     if (initial?.tts?.provider === 'piper') {
       tts.startPiperServer({
         piperCommand: initial.tts.piperCommand,

@@ -13,6 +13,57 @@ const path = require('path');
 const log = require('./log');
 const memory = require('./memory');
 
+// --- per-tool enable switches (Settings → Personality) ----------------------
+
+// Main syncs this from settings (startup + every settings:save); a tool in
+// the set vanishes from the prompt AND hard-rejects at the executor, so a
+// prompt-injection squeeze can never resurrect it mid-session.
+let disabledTools = new Set();
+
+function setDisabledTools(list) {
+  disabledTools = new Set((Array.isArray(list) ? list : [])
+    .map((t) => String(t || '').trim().toLowerCase())
+    .filter(Boolean));
+  log.info('[toolbox]', `enabled tools: ${TOOLS.map((t) => t.name).filter((n) => !disabledTools.has(n)).join(', ')}`);
+}
+
+function isDisabled(name) {
+  return disabledTools.has(String(name || '').toLowerCase());
+}
+
+// --- usage log (History drawer → Tool log tab) ------------------------------
+
+// One JSON file of recent tool runs. Newest first, capped to 120 rows;
+// written synchronously on each run (a few writes a turn at most).
+const { app } = require('electron');
+
+const usageFile = () => path.join(app.getPath('userData'), 'toollog.json');
+
+let usageCache = null;
+
+function usageSnapshot() {
+  if (usageCache) return usageCache.slice();
+  try {
+    const parsed = JSON.parse(fs.readFileSync(usageFile(), 'utf8'));
+    usageCache = Array.isArray(parsed) ? parsed : [];
+  } catch {
+    usageCache = [];
+  }
+  return usageCache.slice();
+}
+
+function recordToolUse(name, ok) {
+  const all = usageSnapshot();
+  all.unshift({ ts: Date.now(), name: String(name), ok: !!ok });
+  usageCache = all.slice(0, 120);
+  try {
+    fs.writeFileSync(usageFile(), JSON.stringify(usageCache, null, 2), 'utf8');
+  } catch (err) {
+    log.info('[toolbox]', 'toollog write failed:', err?.message || err);
+  }
+  return usageCache;
+}
+
 // Current date/time, phrased for a reply the user can act on.
 function describeNow() {
   const now = new Date();
@@ -142,9 +193,12 @@ function byName(name) {
   return TOOLS.find((t) => t.name === String(name || '').trim());
 }
 
-// One line per tool for the system prompt's toolbox block.
+// One line per tool for the system prompt's toolbox block — user-disabled
+// tools never reach the model's eyes.
 function describeForPrompt() {
-  return TOOLS.map((t) => `- ${t.name}: ${t.description}`).join('\n');
+  return TOOLS.filter((t) => !isDisabled(t.name))
+    .map((t) => `- ${t.name}: ${t.description}`)
+    .join('\n');
 }
 
 // Validate then run. Returns { ok, text } — `text` is the tool's result
@@ -155,6 +209,10 @@ async function execute(name, args) {
   if (!tool) {
     log.info('[toolbox]', `unknown tool requested: ${String(name)}`);
     return { ok: false, text: `ERROR unknown tool "${String(name)}" — valid: ${TOOLS.map((t) => t.name).join(', ')}` };
+  }
+  if (isDisabled(tool.name)) {
+    log.info('[toolbox]', `disabled tool requested: ${tool.name}`);
+    return { ok: false, text: `ERROR the user turned the ${tool.name} tool off in Settings — do not retry it; answer without it.` };
   }
   const argStr = JSON.stringify(args ?? {});
   if (argStr.length > 512) {
@@ -190,13 +248,23 @@ async function execute(name, args) {
   }
   try {
     const result = await tool.run(args ?? {});
+    const ok = result?.ok !== false;
     const text = String(result?.text ?? result ?? '').slice(0, 800);
     log.info('[toolbox]', `used ${tool.name} args=${argStr}`);
-    return { ok: result?.ok !== false, applied: result?.applied, text };
+    recordToolUse(tool.name, ok);
+    return { ok, applied: result?.applied, text };
   } catch (err) {
     log.info('[toolbox]', `${tool.name} failed: ${err?.message || err}`);
+    recordToolUse(tool.name, false);
     return { ok: false, text: `ERROR tool ${tool.name} failed: ${String(err?.message || err)}` };
   }
 }
 
-module.exports = { describeForPrompt, execute, has: byName };
+module.exports = {
+  describeForPrompt,
+  execute,
+  has: byName,
+  setDisabledTools,
+  toolsForSettings: () => TOOLS.map((t) => ({ name: t.name, description: t.description })),
+  usageSnapshot,
+};

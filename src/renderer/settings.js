@@ -34,6 +34,7 @@
     ttsPiperGpu: $('#tts-piper-gpu'),
     agentEnabled: $('#agent-enabled'),
     agentSilent: $('#agent-silent'),
+    toolSwitches: $('#tool-switches'),
   };
 
   const PROVIDER_META = {
@@ -65,6 +66,44 @@
   };
 
   let draft = null;
+
+  // Phase 4: one checkbox per allowlisted tool (from main's registry, so the
+  // drawer and the model never drift apart). Checked = on; the disabled ones
+  // land in agent.disabledTools at save.
+  async function renderToolSwitches() {
+    if (!els.toolSwitches) return;
+    let toolDefs = [];
+    try { toolDefs = await window.kanna.listTools(); } catch { /* bridge gone */ }
+    if (!Array.isArray(toolDefs) || !toolDefs.length) return;
+    const off = new Set((draft.agent?.disabledTools || []).map((t) => String(t).toLowerCase()));
+    els.toolSwitches.replaceChildren();
+    for (const t of toolDefs) {
+      const row = document.createElement('label');
+      row.className = 'tool-switch-row';
+
+      const nameEl = document.createElement('span');
+      nameEl.className = 'tool-name';
+      nameEl.textContent = t.name;
+
+      const desc = document.createElement('span');
+      desc.className = 'tool-desc';
+      desc.textContent = String(t.description || '').split('—')[0].trim();
+
+      const input = document.createElement('input');
+      input.type = 'checkbox';
+      input.dataset.tool = t.name;
+      input.checked = !off.has(String(t.name).toLowerCase());
+
+      row.append(nameEl, desc, input);
+      els.toolSwitches.append(row);
+    }
+  }
+
+  function collectDisabledTools() {
+    return els.toolSwitches
+      ? [...els.toolSwitches.querySelectorAll('input[data-tool]:not(:checked)')].map((el) => el.dataset.tool)
+      : (draft.agent?.disabledTools || []);
+  }
 
   function open() {
     window.kanna.getSettings().then((saved) => {
@@ -272,6 +311,7 @@
     // --- toolbox (agent mode) ---
     els.agentEnabled.checked = !!(draft.agent && draft.agent.enabled);
     els.agentSilent.checked = draft.agent?.silentTool !== false; // default on
+    renderToolSwitches();
 
     // --- TTS ---
     const t = draft.tts || (draft.tts = { provider:'builtin', voice:'', rate:1, pitch:1, muted:false, openaiKey:'', elevenlabsKey:'', azureKey:'', azureRegion:'', googleKey:'', piperCommand:'py', piperModel:'', piperDataDir:'', piperUseGpu:false });
@@ -350,12 +390,12 @@
     draft[p].model = els.model.value.trim();
     if (p === 'custom') draft[p].baseUrl = els.baseUrl.value.trim();
     draft.persona = els.persona.value.trim();
-    draft.agent = { enabled: !!els.agentEnabled.checked, silentTool: !!els.agentSilent.checked };
+    draft.agent = { enabled: !!els.agentEnabled.checked, silentTool: !!els.agentSilent.checked, disabledTools: collectDisabledTools() };
 
     const saved = await window.kanna.saveSettings({
       provider: p,
       persona: draft.persona,
-      agent: { enabled: !!els.agentEnabled.checked, silentTool: !!els.agentSilent.checked },
+      agent: { enabled: !!els.agentEnabled.checked, silentTool: !!els.agentSilent.checked, disabledTools: collectDisabledTools() },
       openai: { apiKey: draft.openai.apiKey, model: draft.openai.model },
       anthropic: { apiKey: draft.anthropic.apiKey, model: draft.anthropic.model },
       gemini: { apiKey: draft.gemini.apiKey, model: draft.gemini.model },

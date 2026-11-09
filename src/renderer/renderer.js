@@ -1337,32 +1337,87 @@ async function runShakeAI(shakes) {
 
   const historyDrawer = $('#history-drawer');
   const historyList = $('#history-list');
+  const toolLogEl = $('#tool-log');
+  const tabChatBtn = $('#tab-history-chat');
+  const tabToolsBtn = $('#tab-history-tools');
+  let historyTab = 'chat';
 
-  function openHistory() {
+  function setHistoryTab(tab) {
+    historyTab = tab;
+    tabChatBtn.classList.toggle('active', tab === 'chat');
+    tabToolsBtn.classList.toggle('active', tab === 'tools');
+    historyList.hidden = tab !== 'chat';
+    toolLogEl.hidden = tab !== 'tools';
+    if (tab === 'tools') renderToolLog();
+  }
+
+  function renderChatHistory() {
     historyList.textContent = '';
     if (!history.length) {
       const empty = document.createElement('p');
       empty.className = 'history-empty';
       empty.textContent = 'Nothing yet — turns you exchange stack up here (for this session).';
       historyList.append(empty);
-    } else {
-      for (const m of history) {
-        const line = document.createElement('div');
-        line.className = `history-turn ${m.role}`;
-
-        const who = document.createElement('span');
-        who.className = 'who';
-        who.textContent = m.role === 'user' ? 'You' : 'Kanna';
-
-        const body = document.createElement('div');
-        body.className = 'what';
-        renderMarkdownInto(body, m.content || '');
-
-        line.append(who, body);
-        historyList.append(line);
-      }
-      historyList.scrollTop = historyList.scrollHeight;
+      return;
     }
+    for (const m of history) {
+      const line = document.createElement('div');
+      line.className = `history-turn ${m.role}`;
+
+      const who = document.createElement('span');
+      who.className = 'who';
+      who.textContent = m.role === 'user' ? 'You' : 'Kanna';
+
+      const body = document.createElement('div');
+      body.className = 'what';
+      renderMarkdownInto(body, m.content || '');
+
+      line.append(who, body);
+      historyList.append(line);
+    }
+    historyList.scrollTop = historyList.scrollHeight;
+  }
+
+  function renderToolLog() {
+    toolLogEl.textContent = '';
+    const fill = async () => {
+      let entries = [];
+      try { entries = await window.kanna.toolLog(); } catch { /* bridge gone */ }
+      toolLogEl.textContent = '';
+      if (!Array.isArray(entries) || !entries.length) {
+        const empty = document.createElement('p');
+        empty.className = 'history-empty';
+        empty.textContent = 'She hasn\'t used any tool yet (last 120 uses persist across restarts).';
+        toolLogEl.append(empty);
+        return;
+      }
+      for (const e of entries) {
+        const row = document.createElement('div');
+        row.className = e.ok ? 'tool-log-row' : 'tool-log-row failed';
+
+        const when = document.createElement('span');
+        when.className = 'when';
+        const d = new Date(Number(e.ts) || Date.now());
+        when.textContent = `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+
+        const nameEl = document.createElement('span');
+        nameEl.className = 'tool-name';
+        nameEl.textContent = String(e.name || '?');
+
+        const outcome = document.createElement('span');
+        outcome.className = 'outcome';
+        outcome.textContent = e.ok ? 'ok' : 'failed';
+
+        row.append(when, nameEl, outcome);
+        toolLogEl.append(row);
+      }
+    };
+    fill();
+  }
+
+  function openHistory() {
+    setHistoryTab(historyTab);
+    renderChatHistory();
     historyDrawer.classList.add('open');
     $('#scrim').classList.remove('hidden');
   }
@@ -1375,6 +1430,8 @@ async function runShakeAI(shakes) {
 
   $('#btn-history').addEventListener('click', openHistory);
   $('#btn-history-close').addEventListener('click', closeHistory);
+  tabChatBtn.addEventListener('click', () => setHistoryTab('chat'));
+  tabToolsBtn.addEventListener('click', () => setHistoryTab('tools'));
   $('#scrim').addEventListener('click', () => {
     if (historyDrawer.classList.contains('open')) closeHistory();
   });

@@ -89,6 +89,20 @@ Backlog of things not built yet. Pick from the top when starting something new.
 
 ## Completed recently (v0.1.3)
 
+- [x] **Toolbox Phase 4 — tool usage log + per-tool switches** — every real
+  tool run (success or failure) records `{ts, name, ok}` into
+  `%APPDATA%\Kanna\toollog.json` (newest first, cap 120, written per run by
+  `toolbox.recordToolUse`). History drawer gains tabs: **Chat** (as before)
+  and **Tool log** — one row per run with date/time, tool name, ok/failed
+  (failed rows strike the tool name), via the new `tools:log` handle +
+  `window.kanna.toolLog()`. Settings → Personality gains **Tool switches
+  (per tool)**: one checkbox per allowlisted tool fed by the new `tools:list`
+  handle (`toolsForSettings()`), unchecked names land in
+  `agent.disabledTools` on Save; main syncs the set on startup and on every
+  settings save (`toolbox.setDisabledTools`) — disabled tools vanish from
+  `describeForPrompt()` so the model never sees them, and the executor
+  hard-refuses with a polite ERROR note if one slips through.
+
 - [x] **Toolbox Phase 3 — remember / background / hide** — three new
   allowlist tools in `src/main/toolbox.js`. `remember` self-writes ONE
   durable fact through new `memory.addSelfNote` (same key rules as the
