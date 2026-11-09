@@ -144,9 +144,14 @@ async function runChat(messages, emit, system, opts = {}) {
   // reader buffer and a meta that was still pending.
   const flush = () => {
     if (!reader) return;
+    const hadVisibleText = !!text.trim();
     const meta = reader.finish();
     if (meta) emit('chat:meta', meta);
-    releaseText(reader.takeText());
+    // finish() may now recover prose that sat outside JSON. Only release
+    // it when nothing visible has streamed yet, so already-typed text is not
+    // glued to a duplicate recovered tail.
+    const remainder = reader.takeText();
+    if (remainder && !hadVisibleText) releaseText(remainder);
     if (heldText) {
       // Tool call in a buffered pass = pure prelude — its text stays
       // hidden; the visible reply comes from the next note-fed pass.
