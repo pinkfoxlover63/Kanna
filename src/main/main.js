@@ -635,12 +635,21 @@ app.whenReady().then(async () => {
   await createWindow();
   // Background timer (toolbox): when a timer expires, prompt the renderer
   // to run a new Kanna turn with "*Kanna's timer ringing*" as the user turn.
+  const activeTimers = new Map();
   toolbox.setTimerHandler?.(({ ms }) => {
-    const id = String(Date.now());
-    setTimeout(() => {
+    const id = String(Date.now()) + '-' + Math.random().toString(36).slice(2, 6);
+    const handle = setTimeout(() => {
+      activeTimers.delete(id);
       if (win && !win.isDestroyed()) win.webContents.send('kanna:timerRinging', { id, ms });
     }, ms);
-    return { text: `timer started for ${Math.round(ms / 1000)} seconds (${(ms / 60000).toFixed(1)} minutes); she can keep talking or let time pass, then she will get the alarm.` };
+    activeTimers.set(id, handle);
+    return { text: `timer started for ${Math.round(ms / 1000)} seconds (${(ms / 60000).toFixed(1)} minutes); it rings in the background.` };
+  });
+  toolbox.setTimerCancelHandler?.(() => {
+    const n = activeTimers.size;
+    for (const [id, handle] of activeTimers) clearTimeout(handle);
+    activeTimers.clear();
+    return { text: n ? `${n} pending timer${n === 1 ? '' : 's'} cancelled.` : 'no pending timers to cancel.' };
   });
   try {
     const initial = await settings.getSettings();

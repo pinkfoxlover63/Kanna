@@ -279,7 +279,22 @@ TOOLS.push({
   args: { type: "object", properties: { minutes: { type: "number" }, seconds: { type: "number" } }, additionalProperties: false },
   run: runTimer,
 });
+
+// --- timer cancel (main registers cancel callback) ---------------------
+let timerCancelHandler = null;
+function setTimerCancelHandler(fn) { timerCancelHandler = typeof fn === "function" ? fn : null; }
+function runTimerCancel() {
+  if (!timerCancelHandler) return { ok: false, text: "ERROR timer cancel unavailable (main not wired)" };
+  return timerCancelHandler({});
+}
+TOOLS.push({
+  name: "timer_cancel",
+  description: "cancel pending background timers (ringing is stopped); use when the user withdraws a reminder or sleep timer",
+  args: { type: "object", properties: {}, additionalProperties: false },
+  run: runTimerCancel,
+});
 module.exports = {
+  setTimerCancelHandler,
   setTimerHandler,
   describeForPrompt,
   execute,
