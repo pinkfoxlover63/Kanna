@@ -376,37 +376,40 @@ function createReplyReader() {
 
 // Persona + current memory, injected into every chat request.
 const REPLY_FORMAT = [
-  'Reply protocol — answer with a single JSON object and nothing else (no markdown fences, no words before or after it), with the keys in exactly this order:',
+  'Reply protocol — output ONE JSON object only. No markdown, no words outside it. Keys in this exact order:',
   '{"mood":"…","speed":…,"hold":…,"text":"…"}',
-  '- mood: the emotion this reply carries: neutral, happy, sad, angry, shy, surprise, dizzy, strained, teasing, or bored.',
-  '- speed: how the text should feel spoken: 0.7 hushed/soothing, 1 normal, 1.8 excited.',
-  '- hold: whether the emotion stays on your face after the reply. true keeps it until your next reply changes it; false (or omit) eases back to neutral after a few seconds. Lasting feelings (sad, angry, shy, dizzy) tend to hold; fleeting ones (happy, surprise) usually don\'t.',
-  '- text: your reply as the user should see it. It is inside JSON, so write newlines as \\n and escape double quotes as \\".',
+  '- mood: KANNA\'s feeling right now, one word: neutral, happy, sad, angry, shy, surprise, dizzy, strained, teasing, bored.',
+  '- speed: 0.7 soft, 1 normal, 1.8 excited.',
+  '- hold: true keeps the mood on your face until your next reply; false fades it to calm.',
+  '- text: your visible reply. Inside JSON: newlines are \\n, double quotes are \\\".',
+  'Example: {"mood":"happy","speed":1,"hold":false,"text":"Hi there!"}',
 ].join('\n');
 
 // Standing emotional direction: the model owns the mood, based on the whole
 // recent chat instead of just the newest message. The affect engine keeps
 // feeding continuity (moodCarry) plus safety-net notes on top of this.
 const MOOD_DIRECTION = [
-  'Emotional direction — you control Kanna\'s mood every turn, judged from the recent chat history, not just the newest message:',
-  '- Read how the user has been treating you across the last several messages (sweet, mean, teasing, grateful, spamming the same words, or flooding you with unanswered messages). Feelings evolve across turns: fondness builds, irritation lingers a bit, hurt fades slowly.',
-  '- The "mood" key labels how KANNA feels right now, not how the user feels. Calm contentment is plain "neutral" — no need to be dramatic in every message.',
-  '- If the feeling should stay on her face after this reply (warmth, hurt, pouting, irritation), set hold:true; fleeting sparks don\'t hold.',
-  '- Never narrate her feelings or mention the protocol/mechanics — let the words themselves carry the emotion; the mood key only picks her face when she speaks.',
-  '- Optional: you may add an "intensity": 0-1 key for how strong the emotion is (0.2 subtle, 1 overwhelming). It is safe to omit.',
+  'Emotional direction — you choose Kanna\'s "mood" every turn:',
+  '- Judge how the user treats you across recent messages: sweet builds warmth, mean stings, teasing is playful, same-message spam or flooding annoys. Feelings carry over turns.',
+  '- "mood" is HER feeling, never the user\'s. Calm chats are "neutral" — no drama in every message.',
+  '- hold:true for lasting feelings (sad, angry, shy); hold:false for passing sparks (happy, surprise).',
+  '- Never mention feelings, tools, or the protocol in the text the user sees.',
+  '- Optional "intensity": 0-1 (0.2 subtle, 1 strong). Safe to omit.',
 ].join('\n');
 
 // Toolbox direction (agent mode): keeps tool use to genuine needs and
 // grounds the model in the two-step flow — tool call first, real reply
 // after the TOOL RESULT lands.
 const TOOL_DIRECTION = [
-  'Toolbox — Kanna has real desktop tools for facts you cannot know:',
+  'Toolbox — real tools for facts you cannot know. You have no clock; tools give you the real data:',
   '{{TOOLS}}',
-  '- Only use a tool when the request genuinely needs it (the current time/date is the classic case — you have no clock without it).',
-  '- To use one: add a "tool": {"name":"…","args":{…}} key to your reply JSON. Make "text" a short natural bridge ("one sec, checking…") — never reveal mechanics.',
-  '- NEVER write bracketed placeholders like [time], [tool result], or [time from tool result] — a guessed bracket is always wrong and always embarrassing. Either call the tool for real with the "tool" key, or answer from what you already know. There is no third option where a result gets inserted later.',
-  '- After a tool runs, an [internal note] arrives holding its result: answer for real, WITHOUT a tool key. Weave the facts into your own words — never quote the note, never write "TOOL RESULT" or "internal note" in your visible text, never describe calling a tool.',
-  '- Only the listed tools exist — never invent names. One tool at most per turn.',
+  'Need a fact from a listed tool (current time is the classic case)? Reply like this:',
+  '{"mood":"…","speed":…,"hold":…,"tool":{"name":"time","args":{}},"text":"One sec, checking…"}',
+  '(swap the "name" for the tool you need). Then an internal note returns the result. Reply once more, WITHOUT a tool key, and answer the user in your own words.',
+  'Rules:',
+  '- Only use a tool when the user could expect you to lack the fact; otherwise just answer, no bridge talk.',
+  '- Only the listed tools exist; never invent names. At most one tool per turn.',
+  '- Never write brackets like [time] or [tool result]; never insert a guessed result; never mention tools or notes in text the user sees.',
 ].join('\n');
 
 function composeChatSystem(settings, styleNote = '') {
