@@ -556,26 +556,6 @@ app.whenReady().then(async () => {
         const s = await settings.getSettings();
         const maxChain = Math.max(1, Math.min(5, Number(s.agent?.maxChain) || 2));
         const allowSilent = !!s.agent?.silentTool;
-        // Defensive fallback for models that speak the "checking…" bridge
-        // without emitting a "tool" JSON key — infer from the user text so
-        // the chain still runs instead of leaving a dangling half-task.
-        const inferRequestedTools = (text) => {
-          const u = String(text || '').toLowerCase();
-          const out = [];
-          if (/\b(time|clock|date|what day|what time|now)\b/.test(u)) out.push('time');
-          if (/\b(weather|sky|rain|temperature|umbrella|cloud|forecast)\b/.test(u)) out.push('weather');
-          return out.filter((t, i) => out.indexOf(t) === i);
-        };
-        const requestedTools = s.agent?.enabled ? inferRequestedTools(lastUserText(messages))
-          .filter(t => toolbox.has(t) && !(s.agent?.disabledTools || []).includes(t)) : [];
-        const toolsCalled = new Set();
-        if (s.agent?.enabled && !first.tool && requestedTools.length) {
-          first.tool = { name: requestedTools[0], args: {} };
-          first.silent = false;
-          toolsCalled.add(requestedTools[0]);
-          log.info('[chat]', 'forced run#1 tool=' + requestedTools[0] + ' (model missed call)');
-        }
-        if (first.tool?.name) toolsCalled.add(first.tool.name);
         chainStopFlag = false;
         if (s.agent?.enabled) {
           const thread = [...messages];
@@ -626,7 +606,6 @@ app.whenReady().then(async () => {
             const exec = alreadyHide
               ? { ok: false, text: 'you are hidden from the desktop — call no more tools; finish the reply with "text" only.' }
               : await toolbox.execute(call.name, call.args);
-            toolsCalled.add(call.name);
             applyToolEffects(call, exec);
             alreadyHide = alreadyHide || (call.name === 'hide' && exec.ok);
             // History: while she works on the tool, the user is idle — the
@@ -640,15 +619,7 @@ app.whenReady().then(async () => {
             const noteFed = toolNote(call, exec.text, count < maxChain);
             if (!app.isPackaged) log.info('[chat]', 'fed note=' + noteFed.replace(/\r?\n/g, ' '));
             thread.push({ role: 'user', content: noteFed });
-cur = await ai.runChat(thread, chainEmit, undefined, { noTriggers: true });            log.info('[toolbox]', 'run #' + (count + 1) + ' answer landed; next tool: ' + (cur?.tool?.name || 'none') + ' leak=' + !!cur?.leak + ' preview=' + String(scrubLeak(cur?.text || '')).slice(0, 240));
-            if (s.agent?.enabled && !cur?.stopped && !cur?.tool && requestedTools.length) {
-              const missing = requestedTools.find(t => !toolsCalled.has(t));
-              if (missing) {
-                cur.tool = { name: missing, args: {} };
-                cur.silent = false;
-                log.info('[chat]', 'forced run #' + (count + 2) + ' tool=' + missing + ' (model skipped call)');
-              }
-            }
+            cur = await ai.runChat(thread, chainEmit, undefined, { noTriggers: true });            log.info('[toolbox]', 'run #' + (count + 1) + ' answer landed; next tool: ' + (cur?.tool?.name || 'none') + ' leak=' + !!cur?.leak + ' preview=' + String(scrubLeak(cur?.text || '')).slice(0, 240));
           }
         }
       } catch (err) {
