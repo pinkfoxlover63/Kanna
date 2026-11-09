@@ -829,11 +829,16 @@ async function runShakeAI(shakes) {
         }
         if (!pushedChain) history.push({ role: 'assistant', content: received });
         // Reply fully received. Generate the full TTS and pace the typewriter
-        // to the speech duration so text and voice finish together.
+        // to the speech duration so text and voice finish together. Chain
+        // turns: speak every pass (the network buffer only holds the last,
+        // earlier ones were promoted mid-turn to the small slot).
         shouldSpeak = !tts?.muted;
         let speechDurationMs = 0;
         if (shouldSpeak) {
-          const spoken = textForSpeech(received);
+          const fullTurn = pushedChain
+            ? result.passes.filter(Boolean).join('\n\n')
+            : received;
+          const spoken = textForSpeech(fullTurn);
           const result = await speakChunk(spoken);
           speechDurationMs = result.durationMs || 0;
           // Type at the same speed the voice speaks so they finish together.
@@ -908,15 +913,29 @@ async function runShakeAI(shakes) {
   // screen slides into the small previous-turn slot — after flushing any
   // typing backlog so the slow pace can't leak into the next pass — and
   // the big spot gets a fresh pair of dots for the next pass.
-  const promotePass = () => {
+  //
+  // Precise mode: the box stays in its buffering 'thinking' state until
+  // the whole chain resolves, so nothing has typed yet — main therefore
+  // sends `prevLen`, the byte length of the finished passes, and we slice
+  // them out of the network buffer ourselves: done text promotes to the
+  // small slot, stream buffers restart on the remainder.
+  const promotePass = (info) => {
     if (!busy) return;
-    if (text) {
+    const prevLen = Number(info?.prevLen) || 0;
+    if (prevLen > 0 && received.length > 0) {
+      const done = received.slice(0, prevLen);
+      const rest = received.slice(prevLen);
+      renderMarkdownInto(priorEl, done);
+      received = rest;
+      pending = rest;
+    } else if (text) {
       text += pending;            // untyped backlog belongs to THIS pass
       pending = '';
       textFrac = 0;
       renderMarkdownInto(priorEl, text);
     }
     text = '';
+    textFrac = 0;
     mainEl.classList.remove('error');
     mainEl.classList.add('typing');
     mainEl.replaceChildren(makeDots());

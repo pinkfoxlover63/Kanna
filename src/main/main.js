@@ -506,6 +506,11 @@ app.whenReady().then(async () => {
         const maxChain = Math.max(1, Math.min(5, Number(s.agent?.maxChain) || 2));
         if (s.agent?.enabled) {
           const thread = [...messages];
+          // Length of the visible finished passes — the renderer's network
+          // buffer holds only pass texts (bridge dropped), so this is the
+          // slice point where a finished pass hands over to the next one
+          // mid-turn (bubble stays in 'thinking' until the whole chain ends).
+          const visibleLen = () => passes.reduce((n, p) => n + (p ? p.length : 0), 0);
           for (;;) {
             // Run #2+ text is a woven answer with real data in hand — a
             // visible reply of its own. Run #1 is the bridge (ai.js drops it).
@@ -514,7 +519,7 @@ app.whenReady().then(async () => {
             if (!cur.tool || count >= maxChain) break;
             count++;
             const call = cur.tool;
-            emit('chat:tool', { name: call.name, chain: count, maxChain });
+            emit('chat:tool', { name: call.name, chain: count, maxChain, prevLen: visibleLen() });
             const exec = await toolbox.execute(call.name, call.args);
             // History: while she works on the tool, the user is idle — the
             // same bracketed asterisk pattern the shake scenes use. Thread
@@ -529,7 +534,7 @@ app.whenReady().then(async () => {
             // the renderer to slide it into the small prior slot and start
             // fresh dots for the next pass. (Without this the two replies
             // would type into one message.)
-            if (passes.some(Boolean)) emit('chat:pass', { index: passes.length + 1 });
+            if (passes.some(Boolean)) emit('chat:pass', { index: passes.length + 1, prevLen: visibleLen() });
             // Live stream, no hold: she types the moment the tool note
             // arrives — reply-per-tool, not wait-for-all-tools.
             cur = await ai.runChat(thread, emit, undefined, { noTriggers: true });
