@@ -499,13 +499,26 @@ async function streamOpenAI(settings, messages, push, signal, systemPrompt) {
   const headers = {};
   if (conf.apiKey) headers.authorization = `Bearer ${conf.apiKey}`;
 
-  const res = await post(`${baseUrl}/chat/completions`, headers, {
-    stream: true,
-    model: conf.model,
-    // No max_tokens/temperature here: newer OpenAI models and many
-    // OpenAI-compatible servers reject the legacy parameters.
-    messages: [{ role: 'system', content: systemPrompt }, ...normalize(messages)],
-  }, signal, meta.label);
+  let res;
+  try {
+    res = await post(`${baseUrl}/chat/completions`, headers, {
+      stream: true,
+      model: conf.model,
+      response_format: { type: 'json_object' },
+      // No max_tokens/temperature here: newer OpenAI models and many
+      // OpenAI-compatible servers reject the legacy parameters.
+      messages: [{ role: 'system', content: systemPrompt }, ...normalize(messages)],
+    }, signal, meta.label);
+  } catch (err) {
+    if (!/response_format|unsupported|not.?supported|invalid.parameter/i.test(String(err?.message || err))) throw err;
+    res = await post(`${baseUrl}/chat/completions`, headers, {
+      stream: true,
+      model: conf.model,
+      // No max_tokens/temperature here: newer OpenAI models and many
+      // OpenAI-compatible servers reject the legacy parameters.
+      messages: [{ role: 'system', content: systemPrompt }, ...normalize(messages)],
+    }, signal, meta.label);
+  }
 
   const ct = res.headers.get('content-type') || '';
   if (!ct.includes('text/event-stream')) {
