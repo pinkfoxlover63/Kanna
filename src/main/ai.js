@@ -190,7 +190,6 @@ async function runChat(messages, emit, system, opts = {}) {
     }
     flush();
     affect.endTurn();
-    if (!app.isPackaged) log.info('[ai]', 'finish raw=' + String(r.raw || '').replace(/\n/g, '\\n'));
     return { stopped: false, text, tool: reader ? reader.tool : null, leak: leaked, silent: reader ? reader.silent === true : false, bridge: bridgeText };
   } catch (err) {
     flush();
