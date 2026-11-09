@@ -510,7 +510,6 @@ app.whenReady().then(async () => {
             // Run #2+ text is a woven answer with real data in hand — a
             // visible reply of its own. Run #1 is the bridge (ai.js drops it).
             if (count > 0) passes.push(scrubLeak(cur.text).trim());
-            if (passes.length > 1) emit('chat:pass', { index: passes.length + 1 });
             if (cur.stopped) { stopped = true; break; }
             if (!cur.tool || count >= maxChain) break;
             count++;
@@ -526,6 +525,11 @@ app.whenReady().then(async () => {
             notes.push(`*Waiting while Kanna uses her ${call.name} tool…*`);
             thread.push({ role: 'user', content: notes[notes.length - 1] });
             thread.push({ role: 'user', content: toolNote(call, exec.text, count < maxChain) });
+            // New visual pass: when a previous reply exists on screen, tell
+            // the renderer to slide it into the small prior slot and start
+            // fresh dots for the next pass. (Without this the two replies
+            // would type into one message.)
+            if (passes.some(Boolean)) emit('chat:pass', { index: passes.length + 1 });
             // Live stream, no hold: she types the moment the tool note
             // arrives — reply-per-tool, not wait-for-all-tools.
             cur = await ai.runChat(thread, emit, undefined, { noTriggers: true });
