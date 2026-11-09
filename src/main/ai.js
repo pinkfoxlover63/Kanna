@@ -1,5 +1,4 @@
 'use strict';
-const { app } = require('electron');
 
 const { getSettings, DEFAULT_PERSONA } = require('./settings');
 const affect = require('./affect');
