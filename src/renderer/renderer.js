@@ -898,13 +898,17 @@ async function runShakeAI(shakes) {
   window.kanna.onTool((info) => {
     if (!info?.name) return;
     toast(`Used her ${info.name} tool…`);
+    // Belt and braces: a chained tool call (chain >= 2) implies a finished
+    // reply is on screen — promote it even if the chat:pass event got
+    // missed. No-op when nothing is visible yet.
+    if (info.chain > 1) promotePass();
   });
 
   // Phase-2 chain: a new pass is about to type. The reply already on
   // screen slides into the small previous-turn slot — after flushing any
   // typing backlog so the slow pace can't leak into the next pass — and
   // the big spot gets a fresh pair of dots for the next pass.
-  window.kanna.onPass(() => {
+  const promotePass = () => {
     if (!busy) return;
     if (text) {
       text += pending;            // untyped backlog belongs to THIS pass
@@ -917,7 +921,8 @@ async function runShakeAI(shakes) {
     mainEl.classList.add('typing');
     mainEl.replaceChildren(makeDots());
     scrollToBottom(true);
-  });
+  };
+  window.kanna.onPass(promotePass);
 
   // The model's directions for this reply. Mood is the first key of the JSON
   // reply, so it lands before any words: she sets her face while still
