@@ -36,9 +36,13 @@ contextBridge.exposeInMainWorld('kanna', {
   onMeta: (listener) => {
     ipcRenderer.on('chat:meta', (_e, meta) => listener(meta));
   },
-  // Toolbox (agent mode): fired when she actually uses a tool.
+  // Toolbox (agent mode): chain lifecycle — fired when a real tool runs
+  // (onTool) and before each continuation pass starts typing (onPass).
   onTool: (listener) => {
     ipcRenderer.on('chat:tool', (_e, info) => listener(info));
+  },
+  onPass: (listener) => {
+    ipcRenderer.on('chat:pass', (_e, info) => listener(info));
   },
   // Main-pushed canned reactions (shake dizzy/angry lines).
   onShake: (listener) => {

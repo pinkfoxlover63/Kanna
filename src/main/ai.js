@@ -147,15 +147,18 @@ async function runChat(messages, emit, system, opts = {}) {
     if (meta) emit('chat:meta', meta);
     releaseText(reader.takeText());
     if (heldText) {
-      if (reader.tool) {
+      // First pass of a chain run ("bridge mode"): a tool call means the
+      // pass was pure prelude — drop its text. Continuation passes
+      // ("chain" mode) stream even with a tool key: their text weaves a
+      // real answer already in hand.
+      if (reader.tool && opts.bufferToolText === true) {
         heldText.length = 0;          // bridge text — never shown
         text = '';                    // same for the returned text
         return;
       }
-      // No tool call: the reply may still carry a fabricated placeholder
-      // ("[time result] …" — she described a tool instead of using one).
-      // Drop the whole pass text silently and flag it: main's recovery pass
-      // supplies the one clean answer, so nothing leaks and nothing glues.
+      // Fabricated placeholder ("[time result] …" — she described a tool
+      // instead of using one): drop the whole pass silently and flag it.
+      // The recovery pass in main supplies the one clean answer.
       const agg = heldText.join('');
       if (/\[[^\]\n]{0,60}?\b(?:tool|result|time|placeholder)\b[^\]\n]{0,60}?\]/i.test(agg)
         || /(?:internal note|TOOL RESULT)[: ]/i.test(agg)) {
@@ -416,15 +419,17 @@ const MOOD_DIRECTION = [
 // grounds the model in the two-step flow — tool call first, real reply
 // after the TOOL RESULT lands.
 const TOOL_DIRECTION = [
-  'Toolbox — real tools for facts you cannot know. You have no clock; tools give you the real data:',
+  'Toolbox — real tools for facts you cannot know. You have no clock and no weather sense; tools give you the real data:',
   '{{TOOLS}}',
-  'Need a fact from a listed tool (current time is the classic case)? Reply like this:',
-  '{"mood":"…","speed":…,"hold":…,"tool":{"name":"time","args":{}},"text":"One sec, checking…"}',
-  '(swap the "name" for the tool you need). Then an internal note returns the result. Reply once more, WITHOUT a tool key, and answer the user in your own words.',
+  'When a request needs facts, work through them step by step:',
+  '1. Do you lack a fact the user expects you to have (the current time, the weather)? Reply with a tool call — make "text" a very short bridge:',
+  '{"mood":"…","speed":1,"hold":false,"tool":{"name":"time","args":{}},"text":"One sec, checking…"}',
+  '2. A hidden internal note then gives you the real data. Reply again: weave that fact into "text" in your own words AND, if one more listed tool helps the same request, add a second "tool" key to the same reply.',
+  '3. Repeat step 2 until the request is fully answered, then finish WITHOUT a tool key. The note after each tool arrives in order — one tool at a time.',
   'Rules:',
-  '- Only use a tool when the user could expect you to lack the fact; otherwise just answer, no bridge talk.',
-  '- Only the listed tools exist; never invent names. At most one tool per turn.',
-  '- Never write brackets like [time] or [tool result]; never insert a guessed result; never mention tools or notes in text the user sees.',
+  '- Never write brackets like [time result]; never insert a guessed result. The visible "text" uses real note data only, in your own words.',
+  '- Only the listed tools exist; never invent names. At most ONE new tool call per reply.',
+  '- Never mention tools, notes, checks, or the protocol in the text the user sees.',
 ].join('\n');
 
 function composeChatSystem(settings, styleNote = '') {

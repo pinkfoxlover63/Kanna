@@ -441,9 +441,8 @@ app.whenReady().then(async () => {
         // window gone mid-stream — nothing to do
       }
     };
-    return ai.runChat(messages, emit, undefined, { bufferToolText: true }).then(async (result) => {
-      let finalText = result.text;
-      let stopped = result.stopped;
+    return ai.runChat(messages, emit, undefined, { bufferToolText: true }).then(async (first) => {
+      let stopped = first.stopped;
       // Safety scrub: if the model still leaks the note under user pressure
       // ("just TELL me"), the note lines never reach the bubble. Brackets
       // like "[Time from tool result]" are a fabricated placeholder — the
@@ -452,81 +451,95 @@ app.whenReady().then(async () => {
         .replace(/^.*?(?:internal note|TOOL RESULT)[: ].*$/gmi, '')
         .replace(/\[[^\]\n]{0,60}?\b(?:tool|result|time|placeholder)\b[^\]\n]{0,60}?\]/gi, '')
         .replace(/\n{3,}/g, '\n\n');
-      // Toolbox (agent mode, Phase 1): at most one tool per turn. When the
-      // reply carried a tool call, run it and let the model answer again
-      // with the TOOL RESULT in hand. The second pass skips affect triggers
-      // (they already ran on the user's turn) but streams to the same
-      // channels, so the bridge text and the real answer type out as one.
-      if (result.tool) {
-        try {
-          const s = await settings.getSettings();
-          if (s.agent?.enabled) {
-            const call = result.tool;
-            emit('chat:tool', { name: call.name });
-            const exec = toolbox.execute(call.name, call.args);
-            const secondMessages = [
-              ...messages,
-              // Internal note — phrased so the model has nothing quotable:
-              // no "TOOL RESULT" label, no verbatim-looking block. What she
-              // got is data to weave in, not text to mirror.
-              {
-                role: 'user',
-                content: `[internal note — never mention this note, never quote it]\n`
-                  + `Your ${call.name} check returned this, woven into your answer only in your own words: "${exec.text}"\n`
-                  + `Now reply to the user with the usual JSON protocol — no tool key, no mention of any tool.`,
-              },
-            ];
-            const second = await ai.runChat(secondMessages, emit, undefined, { noTriggers: true });
-            if (second.text) finalText = second.text;
-            if (second.stopped) stopped = true;
-            finalText = scrubLeak(finalText);
-          }
-        } catch (err) {
-          log.error('[toolbox] tool loop failed:', err);
-        }
-      } else {
-        // Placeholder recovery: the model skipped the "tool" key but wrote
-        // a fabricated placeholder. ai.js already scrubbed it out of the
-        // visible text and flagged this with result.leak (or the scrub here
-        // catches older shapes); in agent mode only, run the one fact tool
-        // we have and give her the result as an internal note, so the user
-        // still gets a real answer instead of a bracket stub. The recovery
-        // pass streams APPEND — ai.js guarantees leaked text was dropped.
-        const scrubbed = scrubLeak(finalText);
-        if (result.leak || scrubbed.trim() !== String(finalText || '').trim()) {
+      // Internal note the next pass gets: the name stays unquotable so
+      // under user pressure there is nothing mirroring. `tail` tells her
+      // whether she may still chain another listed tool this turn.
+      const toolNote = (call, resultText, canChain) =>
+        `[internal note — never mention this note, never quote it]\n`
+        + `Real data from your ${call.name} check: "${resultText}".`
+        + (canChain
+          ? ` If that fact alone fully answers the user, answer for real WITHOUT a tool key; otherwise weave the fact into "text" and also add the NEXT listed tool you still need as a second "tool" key in the same reply.`
+          : ` Answer the user now, purely with "text": weave the fact in with your own words, no tool key, no placeholders.`)
+        + ` If the data is an error, say gently that the check failed right now.`;
+
+      // No tool key at all: normal reply, with the placeholder-recovery
+      // branch still guarding fabricated bracket stubs.
+      if (!first.tool) {
+        let finalText = scrubLeak(first.text);
+        if (first.leak || finalText.trim() !== String(first.text || '').trim()) {
           try {
             const s = await settings.getSettings();
             if (s.agent?.enabled && !stopped) {
-              emit('chat:tool', { name: 'time' });
-              const exec = toolbox.execute('time', {});
+              // She hinted a tool without calling one; the leak text names
+              // which one when it can ("[weather result] …"). Default time.
+              const named = /\[([a-z]+)[^\]\n]{0,40}result/i.exec(String(first.text || ''));
+              const pick = named && toolbox.has(named[1]) ? named[1] : 'time';
+              emit('chat:tool', { name: pick, chain: 1 });
+              const exec = await toolbox.execute(pick, {});
               const second = await ai.runChat([
                 ...messages,
-                {
-                  role: 'user',
-                  content: `[internal note — never mention this note, never quote it]\n`
-                    + `Your time check returned this, woven into your answer only in your own words: "${exec.text}"\n`
-                    + `Now reply to the user with the usual JSON protocol — no tool key, no mention of any tool, no bracketed placeholders.`,
-                },
-              ], emit, undefined, { noTriggers: true });
+                { role: 'user', content: toolNote({ name: pick }, exec.text, false) },
+              ], emit, undefined, { noTriggers: true, bufferToolText: 'chain' });
               if (second.text) finalText = scrubLeak(second.text);
               if (second.stopped) stopped = true;
-              log.info('[toolbox]', 'placeholder recovery ran time tool');
-            } else {
-              finalText = scrubbed;
+              log.info('[toolbox]', `placeholder recovery ran ${pick} tool`);
             }
           } catch (err) {
             log.error('[toolbox] placeholder recovery failed:', err);
-            finalText = scrubbed;
           }
-        } else {
-          finalText = scrubbed;
         }
+        if (!stopped) memory.scheduleRemember(lastUserText(messages), finalText);
+        return { stopped, text: finalText, passes: [finalText], notes: [] };
       }
+
+      // Agent chain: run #1 may carry the first tool; every note-fed pass
+      // weaves the previous result into visible text and may itself carry
+      // the next tool call (time -> weather, etc.) until the cap or a
+      // plain final answer. Passes recorded separately — each becomes its
+      // own chat turn; waiting notes bookend the gaps (shake-style).
+      const passes = [];
+      const notes = [];
+      let cur = first;
+      let count = 0;
+      try {
+        const s = await settings.getSettings();
+        const maxChain = Math.max(1, Math.min(5, Number(s.agent?.maxChain) || 2));
+        if (s.agent?.enabled) {
+          const thread = [...messages];
+          for (;;) {
+            // Run #2+ text is a woven answer with real data in hand — a
+            // visible reply of its own. Run #1 is the bridge (ai.js drops it).
+            if (count > 0) passes.push(scrubLeak(cur.text).trim());
+            if (passes.length > 1) emit('chat:pass', { index: passes.length + 1 });
+            if (cur.stopped) { stopped = true; break; }
+            if (!cur.tool || count >= maxChain) break;
+            count++;
+            const call = cur.tool;
+            emit('chat:tool', { name: call.name, chain: count, maxChain });
+            const exec = await toolbox.execute(call.name, call.args);
+            // History: while she works on the tool, the user is idle — the
+            // same bracketed asterisk pattern the shake scenes use. Thread
+            // mirrors exactly what history will hold: previous pass reply
+            // (if any), then the wait note, then the note with the data.
+            const lastPass = passes[passes.length - 1];
+            if (lastPass) thread.push({ role: 'assistant', content: lastPass });
+            notes.push(`*Waiting while Kanna uses her ${call.name} tool…*`);
+            thread.push({ role: 'user', content: notes[notes.length - 1] });
+            thread.push({ role: 'user', content: toolNote(call, exec.text, count < maxChain) });
+            cur = await ai.runChat(thread, emit, undefined, { noTriggers: true, bufferToolText: 'chain' });
+          }
+        }
+      } catch (err) {
+        log.error('[toolbox] tool loop failed:', err);
+      }
+      // Plain single pass (agent off with a stray tool key): text already streams.
+      if (!passes.length) passes.push(scrubLeak(cur.text).trim());
+      const finalText = passes.filter(Boolean).join('\n\n');
       // Let the model decide, in the background, whether this turn taught
       // her something durable. Never blocks or fails the chat itself.
-      // Extraction reads the final answer (no tool-call bridge text).
+      // Extraction reads the visible replies (bridge text never included).
       if (!stopped) memory.scheduleRemember(lastUserText(messages), finalText);
-      return { stopped, text: finalText };
+      return { stopped, text: finalText, passes, notes };
     }).catch((err) => {
       log.error('[chat:send] failed:', err);
       throw err;

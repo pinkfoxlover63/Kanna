@@ -89,6 +89,20 @@ Backlog of things not built yet. Pick from the top when starting something new.
 
 ## Completed recently (v0.1.3)
 
+- [x] **Toolbox Phase 2 — weather tool + reply-per-tool chaining** — new
+  `weather` tool in `src/main/toolbox.js` (wttr.in one-line lookup, no key,
+  ~9 s abort window; executor is async). Chain loop in `chat:send`: every
+  note-fed pass WEAVES the previous tool result into visible text and may
+  carry the next tool call in the same reply (time → weather, capped by
+  `agent.maxChain`). Each woven reply is its own chat turn — resolve
+  carries `passes` + `notes`, the renderer pushes one assistant entry per
+  pass with `*Waiting while Kanna uses her X tool…*` user-side notes in
+  the gaps (shake-scene pattern), and `chat:pass` slides the finished pass
+  into the small prior-turn slot before the next types. `bufferToolText`
+  gains `'chain'` mode (hold + release even with a tool key); run #1 stays
+  bridge-only (text dropped). Placeholder leak → whole pass dropped +
+  recovery pass with the named tool. Prompt: small-model-friendly steps.
+
 - [x] **Toolbox Phase 1 — agent mode core + time tool** — per the toolbox plan
   (`%USERPROFILE%\.opencode\plan\toolbox.md`): new `src/main/toolbox.js`
   registry/executor (allowlist, unknown-tool + oversized-args rejection,

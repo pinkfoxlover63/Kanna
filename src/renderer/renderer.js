@@ -814,7 +814,20 @@ async function runShakeAI(shakes) {
     try {
       const result = await window.kanna.sendChat(history.slice(-24));
       if (received) {
-        history.push({ role: 'assistant', content: received });
+        // Phase-2 chain: each visible reply becomes its own turn, with the
+        // wait notes (user-side bracket lines, never displayed) sitting in
+        // the gaps — the same pattern the shake scenes use.
+        let pushedChain = false;
+        if (Array.isArray(result.passes) && result.passes.length && result.passes.some((p) => String(p || '').trim())) {
+          const notes = Array.isArray(result.notes) ? result.notes : [];
+          result.passes.forEach((pass, i) => {
+            const note = notes[i];
+            if (note) history.push({ role: 'user', content: note });
+            if (String(pass || '').trim()) history.push({ role: 'assistant', content: pass });
+          });
+          pushedChain = true;
+        }
+        if (!pushedChain) history.push({ role: 'assistant', content: received });
         // Reply fully received. Generate the full TTS and pace the typewriter
         // to the speech duration so text and voice finish together.
         shouldSpeak = !tts?.muted;
@@ -880,11 +893,24 @@ async function runShakeAI(shakes) {
     if (phase !== 'thinking' && !drainTimer) drainTimer = requestAnimationFrame(pace);
   });
 
-  // Toolbox (agent mode): she used a real tool mid-turn (Phase 1: only
-  // time). Toast only — the tool result itself says what happened.
+  // Toolbox (agent mode): she used a real tool mid-turn (Phase 2: time,
+  // weather). Toast only — the tool result itself says what happened.
   window.kanna.onTool((info) => {
     if (!info?.name) return;
     toast(`Used her ${info.name} tool…`);
+  });
+
+  // Phase-2 chain: a new pass is about to type. The reply already on
+  // screen slides into the small previous-turn slot, and the big spot
+  // gets a fresh pair of dots for the next pass.
+  window.kanna.onPass(() => {
+    if (!busy) return;
+    if (text) renderMarkdownInto(priorEl, text);
+    text = '';
+    mainEl.classList.remove('error');
+    mainEl.classList.add('typing');
+    mainEl.replaceChildren(makeDots());
+    scrollToBottom(true);
   });
 
   // The model's directions for this reply. Mood is the first key of the JSON
