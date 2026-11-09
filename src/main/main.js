@@ -470,10 +470,6 @@ app.whenReady().then(async () => {
     };
     return ai.runChat(messages, emit, undefined, { bufferToolText: true }).then(async (first) => {
       let stopped = first.stopped;
-        if (!app.isPackaged) {
-          log.info('[chat]', 'run#1 TOOL=' + (first.tool && first.tool.name || 'none') + ' SILENT=' + first.silent + ' LEAK=' + first.leak + ' BRIDGE=' + String(first.bridge).slice(0, 250) + ' TEXT=' + String(first.text).slice(0, 350));
-          log.info('[chat]', 'user=' + String(lastUserText(messages)).slice(0, 300));
-        }
       // Safety scrub: if the model still leaks the note under user pressure
       // ("just TELL me"), the note lines never reach the bubble. Brackets
       // like "[Time from tool result]" are a fabricated placeholder — the
@@ -618,7 +614,7 @@ app.whenReady().then(async () => {
             thread.push({ role: 'user', content: notes[notes.length - 1] });
             thread.push({ role: 'user', content: toolNote(call, exec.text, count < maxChain) });
             cur = await ai.runChat(thread, chainEmit, undefined, { noTriggers: true });
-            log.info('[toolbox]', 'run #' + (count + 1) + ' answer landed; next tool: ' + (cur?.tool?.name || 'none') + ' leak=' + !!cur?.leak + ' preview=' + String(scrubLeak(cur?.text || '')).slice(0, 240));
+            log.info('[toolbox]', `run #${count + 1} answer landed; next tool: ${cur?.tool?.name || 'none'} leak=${!!cur?.leak} trimmedlen=${scrubLeak(cur?.text || '').trim().length}`);
           }
         }
       } catch (err) {
