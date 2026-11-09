@@ -562,8 +562,12 @@ app.whenReady().then(async () => {
               passes.push(passText);
               // Voice first: the renderer shows/speaks this pass now; the
               // tool it calls runs only after the speech ends — unless the
-              // pass used "silent" (instant resume) or the text vanished.
-              const silent = !passText || (allowSilent && cur.silent === true);
+              // pass used "silent" (instant resume). A pass with no tool is
+              // the LAST word of the turn, so "silent" is ignored on it no
+              // matter what the model wrote (small models mark the final
+              // reply silent anyway and the whole answer would be "…").
+              const isFinal = !!cur.stopped || !cur.tool || count >= maxChain;
+              const silent = !isFinal && (!passText || (allowSilent && cur.silent === true));
               emit('chat:passDone', { index: count, text: passText, silent });
               log.info('[toolbox]', `chain pass ${count}/${maxChain}${silent ? ' silent' : ''} len=${passText.length}`);
               await waitPassSpoken();
