@@ -479,7 +479,7 @@ app.whenReady().then(async () => {
               const second = await ai.runChat([
                 ...messages,
                 { role: 'user', content: toolNote({ name: pick }, exec.text, false) },
-              ], emit, undefined, { noTriggers: true, bufferToolText: 'chain' });
+              ], emit, undefined, { noTriggers: true });
               if (second.text) finalText = scrubLeak(second.text);
               if (second.stopped) stopped = true;
               log.info('[toolbox]', `placeholder recovery ran ${pick} tool`);
@@ -526,7 +526,9 @@ app.whenReady().then(async () => {
             notes.push(`*Waiting while Kanna uses her ${call.name} tool…*`);
             thread.push({ role: 'user', content: notes[notes.length - 1] });
             thread.push({ role: 'user', content: toolNote(call, exec.text, count < maxChain) });
-            cur = await ai.runChat(thread, emit, undefined, { noTriggers: true, bufferToolText: 'chain' });
+            // Live stream, no hold: she types the moment the tool note
+            // arrives — reply-per-tool, not wait-for-all-tools.
+            cur = await ai.runChat(thread, emit, undefined, { noTriggers: true });
           }
         }
       } catch (err) {

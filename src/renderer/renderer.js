@@ -901,11 +901,17 @@ async function runShakeAI(shakes) {
   });
 
   // Phase-2 chain: a new pass is about to type. The reply already on
-  // screen slides into the small previous-turn slot, and the big spot
-  // gets a fresh pair of dots for the next pass.
+  // screen slides into the small previous-turn slot — after flushing any
+  // typing backlog so the slow pace can't leak into the next pass — and
+  // the big spot gets a fresh pair of dots for the next pass.
   window.kanna.onPass(() => {
     if (!busy) return;
-    if (text) renderMarkdownInto(priorEl, text);
+    if (text) {
+      text += pending;            // untyped backlog belongs to THIS pass
+      pending = '';
+      textFrac = 0;
+      renderMarkdownInto(priorEl, text);
+    }
     text = '';
     mainEl.classList.remove('error');
     mainEl.classList.add('typing');

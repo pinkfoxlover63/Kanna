@@ -115,12 +115,13 @@ async function runChat(messages, emit, system, opts = {}) {
   let text = '';
   let leaked = false; // fabricated placeholder found in the reply text
   const reader = plain ? null : createReplyReader();
-  // bufferToolText (agent mode): hold decoded text back until the stream
+  // bufferToolText (agent chat): hold decoded text back until the stream
   // ends. A reply that carried a "tool" call gets its bridge text dropped
-  // — the visible response is only the second pass, so the user sees one
-  // answer (with the time in it), not "checking… [tool placeholder]"
-  // followed by the real answer glued together. A reply WITHOUT a tool
-  // call releases the buffer as-is: typing stays live.
+  // — the visible response is the next, note-fed pass — and a fabricated
+  // bracket placeholder drops the whole pass with a `leak` flag. A reply
+  // WITHOUT a tool call releases the buffer as-is: typing stays live.
+  // Continuation chain passes are run WITHOUT this option: they stream
+  // live, so she speaks right after each tool — never wait-for-all.
   const heldText = opts.bufferToolText && !plain ? [] : null;
   const releaseText = (t) => { if (t) { text += t; if (!heldText) emit('chat:chunk', t); else heldText.push(t); } };
   const push = (chunk) => {
@@ -147,11 +148,9 @@ async function runChat(messages, emit, system, opts = {}) {
     if (meta) emit('chat:meta', meta);
     releaseText(reader.takeText());
     if (heldText) {
-      // First pass of a chain run ("bridge mode"): a tool call means the
-      // pass was pure prelude — drop its text. Continuation passes
-      // ("chain" mode) stream even with a tool key: their text weaves a
-      // real answer already in hand.
-      if (reader.tool && opts.bufferToolText === true) {
+      // Tool call in a buffered pass = pure prelude — its text stays
+      // hidden; the visible reply comes from the next note-fed pass.
+      if (reader.tool) {
         heldText.length = 0;          // bridge text — never shown
         text = '';                    // same for the returned text
         return;
