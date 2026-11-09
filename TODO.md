@@ -95,7 +95,7 @@ Backlog of things not built yet. Pick from the top when starting something new.
   `toolbox.recordToolUse`). History drawer gains tabs: **Chat** (as before)
   and **Tool log** — one row per run with date/time, tool name, ok/failed
   (failed rows strike the tool name), via the new `tools:log` handle +
-  `window.kanna.toolLog()`. Settings → Personality gains **Tool switches
+  `window.kanna.toolLog()`. Settings → Tools gains **Tool switches
   (per tool)**: one checkbox per allowlisted tool fed by the new `tools:list`
   handle (`toolsForSettings()`), unchecked names land in
   `agent.disabledTools` on Save; main syncs the set on startup and on every
@@ -103,6 +103,8 @@ Backlog of things not built yet. Pick from the top when starting something new.
   `describeForPrompt()` so the model never sees them, and the executor
   hard-refuses with a polite ERROR note if one slips through.
 
+
+- [x] **Toolbox background timer tool** - new `timer` and `timer_cancel` tools: `timer` arms a background delay in minutes/seconds and returns immediately; on expiry main pushes `kanna:timerRinging`, which the renderer turns into a real user pseudo-turn `*Kanna's timer ringing*` (she can then use another tool or notify). Cancel stops pending timers. Stored in AGENTS.md and the tool registry.
 - [x] **Toolbox Phase 3 — remember / background / hide** — three new
   allowlist tools in `src/main/toolbox.js`. `remember` self-writes ONE
   durable fact through new `memory.addSelfNote` (same key rules as the
@@ -125,7 +127,7 @@ Backlog of things not built yet. Pick from the top when starting something new.
   before running that pass's tool — she speaks each tool result one by one,
   next tool only after her voice finishes (~5 min safety ceiling per wait).
   Reader gains an optional `"silent": true` key (ai.js); `agent.silentTool`
-  (default on, Settings → Personality toggle) lets an intermediate pass
+  (default on, Settings → Tools toggle) lets an intermediate pass
   mark itself silent to skip its voice and continue mid-chain instantly —
   final reply never silent. Old `chat:pass` promote machinery removed
   (passDone replaces it); battery of resume paths: builtin speech ends via
@@ -155,7 +157,7 @@ Backlog of things not built yet. Pick from the top when starting something new.
   with a balanced-brace scan at stream end (truncated tool = absent, raw
   fallback unaffected). `main.js` chat loop: one tool per turn → `chat:tool`
   toast → TOOL RESULT fed back → second pass with the real answer, typed
-  into the same bubble. Settings → Personality → Agent mode toggle
+  into the same bubble. Settings → Tools → Agent mode toggle
   (`agent.enabled`, default OFF — no tools when off). 13 headless reader/
   executor tests green.
 

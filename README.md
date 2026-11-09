@@ -49,6 +49,8 @@ your choice of AI provider.
   and stores the answers as short facts in `memory.json` (never secrets).
   The facts ride along with every new conversation's system prompt, and you
   can inspect/clear them in ⚙ Settings → Memory.
+- **Agent mode / Tools tab** - optional toolbox lives under Settings -> Tools: Agent mode on/off, a 1-5 "Max chained tools per turn" slider, per-tool switches (time, weather, remember, background, hide, timer, timer_cancel, etc.), Silent chaining toggle, and a Tool log in the History drawer. Off by default; timer results wake a follow-up "*Kanna's timer ringing*" turn.
+
 - **Speech-to-text** — 🎤 in the composer transcribes locally with
   Vosk (click to talk, click again to insert); final text lands in the input
   as if typed.
