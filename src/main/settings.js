@@ -22,6 +22,7 @@ const DEFAULT_SETTINGS = {
   persona: DEFAULT_PERSONA,
   agent: {
     enabled: false, // Agent mode: lets the model call real desktop tools (toolbox)
+    maxChain: 2, // cap on chained tool calls per turn (1-5)
     silentTool: true, // Voice-sequenced chaining: the model may "silent" an intermediate reply so the next tool runs right away
     disabledTools: [], // Phase 4: user-off tools — excluded from the prompt + hard-rejected at the executor
   },
