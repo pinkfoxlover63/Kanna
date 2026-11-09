@@ -600,13 +600,7 @@ async function runShakeAI(shakes) {
     }
 
     const cloud = await speakCloud(text);
-    if (cloud) return { durationMs: cloud.durationMs || 0 };
-
-    // Host TTS failed to produce audio (e.g. Piper returned an invalid
-    // WAV) fall to the browser's built-in voice instead of staying quiet.
-    console.warn('[tts] cloud failed; using builtin fallback');
-    await speakBuiltin(text);
-    return { durationMs: estimateDurationMs(text, Number(tts.rate) || 1) };
+    return cloud ? { durationMs: cloud.durationMs || 0 } : { durationMs: 0 };
   }
 
   function textForSpeech(md) {
