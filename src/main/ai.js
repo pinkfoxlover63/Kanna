@@ -287,8 +287,17 @@ function createReplyReader() {
     while (r.textFrom >= 0 && !r.textDone && r.pos < r.raw.length) {
       const ch = r.raw[r.pos];
       if (ch === '"') {
-        r.textDone = true;
-        break;
+        let j = r.pos + 1;
+        while (j < r.raw.length && /\s/.test(r.raw[j])) j++;
+        const next = (j < r.raw.length) ? r.raw[j] : '';
+        if (next === '' || next === ',' || next === '}' || next === '{') {
+          r.textDone = true;
+          break;
+        }
+        r.out += ch;
+        r.pos++;
+        continue;
+      
       }
       if (ch === '\\') {
         if (r.pos + 1 >= r.raw.length) break;        // escape split across chunks
