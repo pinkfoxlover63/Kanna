@@ -149,6 +149,7 @@ async function runChat(messages, emit, system, opts = {}) {
     if (meta) emit('chat:meta', meta);
     const held = reader.takeText();
     if (heldText) heldText.length = 0;
+    text = '';
     releaseText(held);
     if (heldText) {
       // Tool call in a buffered pass = pure prelude — its text stays hidden
