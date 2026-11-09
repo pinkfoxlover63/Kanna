@@ -614,6 +614,7 @@ app.whenReady().then(async () => {
             thread.push({ role: 'user', content: notes[notes.length - 1] });
             thread.push({ role: 'user', content: toolNote(call, exec.text, count < maxChain) });
             cur = await ai.runChat(thread, chainEmit, undefined, { noTriggers: true });
+            log.info('[toolbox]', `run #${count + 1} answer landed; next tool: ${cur?.tool?.name || 'none'} leak=${!!cur?.leak} trimmedlen=${scrubLeak(cur?.text || '').trim().length}`);
           }
         }
       } catch (err) {

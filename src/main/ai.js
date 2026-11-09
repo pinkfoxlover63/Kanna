@@ -442,7 +442,7 @@ const TOOL_DIRECTION = [
   'Rules:',
   '- Always give "text" a one-line lead-in like "One sec, checking…" in the same reply as a "tool" key — the user hears it while your tool runs. Never call a tool with an empty "text".',
   '- Never write brackets like [time result]; never insert a guessed result. The visible "text" uses real note data only, in your own words.',
-  '- Only the listed tools exist; never invent names. At most ONE new tool call per reply.',
+  '- At most ONE new tool call per reply, and call ONE listed tool per reply in sequence. Keep chaining while the request still has an unresolved fact: once one tools data arrives, add the NEXT listed tool you need as a second tool key in the next reply until every asked fact is covered.',
   '- Never mention tools, notes, checks, or the protocol in the text the user sees.',
 ].join('\n');
 
