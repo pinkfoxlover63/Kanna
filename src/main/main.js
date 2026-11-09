@@ -619,11 +619,8 @@ app.whenReady().then(async () => {
       } catch (err) {
         log.error('[toolbox] tool loop failed:', err);
       }
-      // Bridge pass (spoken above) is one entry ahead of the tool-wait notes
-      // — one note per tool, one pass per answer (bridge + each woven reply).
-      if (notes.length < passes.length) {
-        notes.unshift(...Array(passes.length - notes.length).fill(null));
-      }
+      // Plain single pass (agent off with a stray tool key): text already streams.
+      if (!passes.length) passes.push(scrubLeak(cur.text).trim());
       const finalText = passes.filter(Boolean).join('\n\n');
       // Let the model decide, in the background, whether this turn taught
       // her something durable. Never blocks or fails the chat itself.
