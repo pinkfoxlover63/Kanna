@@ -501,27 +501,13 @@ async function streamOpenAI(settings, messages, push, signal, systemPrompt) {
   const headers = {};
   if (conf.apiKey) headers.authorization = `Bearer ${conf.apiKey}`;
 
-  function makeBody(withFormat) {
-    const body = {
-      stream: true,
-      model: conf.model,
-      // No max_tokens/temperature here: newer OpenAI models and many
-      // OpenAI-compatible servers reject the legacy parameters.
-      messages: [{ role: 'system', content: systemPrompt }, ...normalize(messages)],
-    };
-    // Ask the endpoint for guaranteed JSON output — our reply protocol
-    // expects strict JSON, so this stops text-form replies from breaking the
-    // parser. Fall back silently if the server doesn't speak the parameter.
-    if (withFormat) body.response_format = { type: 'json_object' };
-    return body;
-  }
-  let res;
-  try {
-    res = await post(`${baseUrl}/chat/completions`, headers, makeBody(true), signal, meta.label);
-  } catch (err) {
-    if (!/response_format|unsupported|not.?supported|invalid.parameter/i.test(String(err?.message || err))) throw err;
-    res = await post(`${baseUrl}/chat/completions`, headers, makeBody(false), signal, meta.label);
-  }
+  const res = await post(`${baseUrl}/chat/completions`, headers, {
+    stream: true,
+    model: conf.model,
+    // No max_tokens/temperature here: newer OpenAI models and many
+    // OpenAI-compatible servers reject the legacy parameters.
+    messages: [{ role: 'system', content: systemPrompt }, ...normalize(messages)],
+  }, signal, meta.label);
 
   const ct = res.headers.get('content-type') || '';
   if (!ct.includes('text/event-stream')) {
