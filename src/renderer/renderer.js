@@ -839,8 +839,8 @@ async function runShakeAI(shakes) {
             ? result.passes.filter(Boolean).join('\n\n')
             : received;
           const spoken = textForSpeech(fullTurn);
-          const result = await speakChunk(spoken);
-          speechDurationMs = result.durationMs || 0;
+          const speakInfo = await speakChunk(spoken);
+          speechDurationMs = speakInfo.durationMs || 0;
           // Type at the same speed the voice speaks so they finish together.
           // Tune the base `13` here — lower = slower text (voice scales with
           // the rate slider too, so they stay in sync).
