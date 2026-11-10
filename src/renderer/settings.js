@@ -36,6 +36,7 @@
     agentSilent: $('#agent-silent'),
     agentMaxChain: $('#agent-maxchain'),
     agentMaxChainVal: $('#agent-maxchain-val'),
+    sensitiveScreen: $('#sensitive-screen'),
     toolSwitches: $('#tool-switches'),
   };
 
@@ -319,6 +320,8 @@
       if (els.agentMaxChainVal) els.agentMaxChainVal.textContent = String(v);
     }
     renderToolSwitches();
+    // Phase 5: sensitive tier checkbox reflects the saved switch.
+    if (els.sensitiveScreen) els.sensitiveScreen.checked = !!(draft.sensitive && draft.sensitive.screen);
 
     // --- TTS ---
     const t = draft.tts || (draft.tts = { provider:'builtin', voice:'', rate:1, pitch:1, muted:false, openaiKey:'', elevenlabsKey:'', azureKey:'', azureRegion:'', googleKey:'', piperCommand:'py', piperModel:'', piperDataDir:'', piperUseGpu:false });
