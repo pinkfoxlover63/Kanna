@@ -1,6 +1,7 @@
 node_modules/
 dist/
 .opencode/
+.commandcode/
 *.log
 resources/piper/kanna-piper-server.exe
 resources/piper/*.onnx
