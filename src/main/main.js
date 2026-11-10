@@ -2,6 +2,8 @@
 
 const { app, BrowserWindow, ipcMain, Menu, Tray, globalShortcut, desktopCapturer, screen } = require('electron');
 const path = require('node:path');
+const fs = require('node:fs');
+const { pathToFileURL } = require('node:url');
 
 const settings = require('./settings');
 const ai = require('./ai');
@@ -101,20 +103,46 @@ function flashScreenNotice() {
       width: disp.bounds.width, height: disp.bounds.height,
       frame: false, transparent: true, resizable: false,
       movable: false, minimizable: false, maximizable: false,
-      skipTaskbar: true, focusable: false, show: false,
+      skipTaskbar: true, show: false,
     });
     flashWin.setAlwaysOnTop(true, 'screen-saver');
     flashWin.setIgnoreMouseEvents(true);
+    flashWin.once('closed', () => { flashWin = null; });
+    // Peek art (animated webp) sits bottom-right while the flash runs.
+    // The page itself must load from a real file, not a data: URL: data:
+    // pages have an opaque origin, so Chromium blocks its file: img
+    // subresources, and the 1.7 MB webp inlined into a data: URL blows
+    // Electron's URL length cap (ERR_INVALID_URL). Instead the HTML (with
+    // the art as base64) is written to a temp file and loadFile'd.
+    let peek = '';
+    try {
+      const webp = fs.readFileSync(path.join(__dirname, '../../assets/pet-model/animated/peek.webp'));
+      peek = `<img id="p" src="data:image/webp;base64,${webp.toString('base64')}" alt="">`;
+    } catch (err) {
+      log.info('[toolbox]', `screen flash peek art missing: ${err?.message || err}`);
+    }
     const html = `<!doctype html><html><head><meta charset="utf-8"><style>
       html,body{margin:0;height:100%;background:transparent;overflow:hidden;cursor:none}
       #f{position:fixed;inset:0;box-shadow:inset 0 0 min(18vw,240px) rgba(255,72,72,.6);animation:p .55s ease-in-out 2;pointer-events:none}
       #t{position:fixed;top:5vh;left:0;right:0;text-align:center;font:600 22px/1.3 'Segoe UI',system-ui,sans-serif;color:#fff;text-shadow:0 1px 10px rgba(0,0,0,.75);opacity:0;animation:t .55s ease-out .1s 2 alternate;pointer-events:none}
+      #pw{position:fixed;right:12px;bottom:0;width:min(20vw,280px);height:calc(min(20vw,280px)/4);overflow:hidden;opacity:0;animation:t .7s ease-out 2 alternate;pointer-events:none}
+      #p{position:relative;left:0;top:0;width:100%}
       @keyframes p{0%,100%{opacity:0}45%{opacity:1}}
       @keyframes t{from{opacity:0}to{opacity:1}}
-      </style></head><body><div id="f"></div><div id="t">Kanna is reading your screen</div></body></html>`;
-    flashWin.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
-    flashWin.once('ready-to-show', () => { try { flashWin?.showInactive(); } catch { /* closed */ } });
-    setTimeout(() => { try { flashWin?.destroy(); } catch { /* already gone */ } flashWin = null; }, 1300);
+      </style></head><body><div id="f"></div><div id="t">Kanna is reading your screen</div><div id="pw">${peek}</div></body></html>`;
+    const flashFile = path.join(app.getPath('temp'), 'kanna-screen-flash.html');
+    fs.writeFileSync(flashFile, html);
+    flashWin.loadFile(flashFile)
+      .then(() => {
+        log.info('[toolbox]', 'screen flash: loaded, showing');
+        if (!flashWin) return; // destroyed in the meantime
+        flashWin.showInactive();
+        setTimeout(() => { try { flashWin?.destroy(); } catch { /* already gone */ } }, 1400);
+      })
+      .catch((err) => log.info('[toolbox]', `screen flash load failed: ${err?.message || err}`));
+    flashWin.webContents.on('did-fail-load', (_e, code, desc) => {
+      log.info('[toolbox]', `screen flash did-fail-load ${code} ${desc}`);
+    });
   } catch (err) {
     log.info('[toolbox]', `screen flash failed: ${err?.message || err}`);
   }
