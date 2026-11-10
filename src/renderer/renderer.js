@@ -939,9 +939,12 @@ async function runShakeAI(shakes) {
 
   // Toolbox (agent mode): she used a real tool mid-turn (Phase 2: time,
   // weather). Toast only — the tool result itself says what happened.
+  // Sensitive tools toast in plain wording (Phase 5: the history/log keeps
+  // no screenshot — only the "read your screen" fact).
   window.kanna.onTool((info) => {
     if (!info?.name) return;
-    toast(`Used her ${info.name} tool…`);
+    if (info.name === 'read_screen') toast('Kanna read your screen…');
+    else toast(`Used her ${info.name} tool…`);
   });
 
   // Toolbox `background`: she moved to another wallpaper scene — swap the
@@ -963,6 +966,42 @@ async function runShakeAI(shakes) {
     if (busy) { pendingTimerRinging++; return; }
     send('*Kanna\'s timer ringing*');
   });
+
+  // Phase 5 (sensitive tier): per-use consent overlay for read_screen.
+  // Session memory only (Allow once / session / Never live in main). The
+  // same Escape that stops the stream already denies a pending ask.
+  const consentEl = document.getElementById('consent');
+  const consentSub = document.getElementById('consent-sub');
+  const consentTool = document.getElementById('consent-tool-name');
+  let consentLiveId = null;
+
+  function hideConsent() {
+    if (!consentEl) return;
+    consentEl.classList.add('hidden');
+    consentLiveId = null;
+  }
+
+  window.kanna.onConsent?.((info) => {
+    if (!consentEl) { window.kanna.consentReply({ requestId: info?.requestId, choice: 'never' }); return; }
+    consentLiveId = String(info?.requestId || '');
+    consentTool.textContent = 'Kanna';
+    consentSub.innerHTML = `She wants to <b>read your screen once</b>. What she sees is sent to <code>${String(info?.provider || 'the provider').replace(/[<>&]/g, '')}</code> and nowhere else. Nothing is saved to disk or history.`;
+    consentEl.classList.remove('hidden');
+  });
+  window.kanna.onConsentClose?.(() => hideConsent());
+  document.getElementById('consent-once')?.addEventListener('click', () => {
+    if (consentLiveId) window.kanna.consentReply({ requestId: consentLiveId, choice: 'allow-once' });
+    hideConsent();
+  });
+  document.getElementById('consent-session')?.addEventListener('click', () => {
+    if (consentLiveId) window.kanna.consentReply({ requestId: consentLiveId, choice: 'allow-session' });
+    hideConsent();
+  });
+  document.getElementById('consent-never')?.addEventListener('click', () => {
+    if (consentLiveId) window.kanna.consentReply({ requestId: consentLiveId, choice: 'never' });
+    hideConsent();
+  });
+
   const chainResumeNow = () => {
     if (chainResumeTimer) { clearTimeout(chainResumeTimer); chainResumeTimer = null; }
     try { window.kanna.chainResume?.(); } catch { /* window gone */ }

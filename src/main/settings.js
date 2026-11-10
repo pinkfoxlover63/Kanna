@@ -26,6 +26,9 @@ const DEFAULT_SETTINGS = {
     silentTool: true, // Voice-sequenced chaining: the model may "silent" an intermediate reply so the next tool runs right away
     disabledTools: [], // Phase 4: user-off tools — excluded from the prompt + hard-rejected at the executor
   },
+  sensitive: {
+    screen: false, // Phase 5 sensitive tier: screen reading (read_screen tool); session-only consents at use time
+  },
   openai: { apiKey: '', model: 'gpt-4o-mini' },
   anthropic: { apiKey: '', model: 'claude-sonnet-4-5' },
   gemini: { apiKey: '', model: 'gemini-2.5-flash' },

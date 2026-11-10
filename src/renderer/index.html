@@ -87,6 +87,10 @@
           <input id="agent-maxchain" type="range" min="1" max="5" step="1" value="2">
           <p class="hint">Agent mode only. How many linked tool-calls she may run in one answer (time, weather, …). Default 2 keeps replies snappy; bigger models can dig deeper per turn.</p>
         </label>
+        <label class="field">
+          <span>Screen reading (sensitive)<input id="sensitive-screen" type="checkbox"></span>
+          <p class="hint">Phase 5 sensitive tier. Lets her look at your screen once via <code>read_screen</code>, only when your latest message asks for it, and only on image providers (OpenAI, Anthropic, Gemini). Every use pops a consent overlay naming what gets sent and where; a screenshot is never saved to disk or history. Off by default.</p>
+        </label>
         <label class="field" id="tool-switches-field">
           <span>Tool switches (per tool)</span>
           <div id="tool-switches" class="tool-switches"></div>
@@ -264,6 +268,18 @@
   </div>
 
   <div id="toast" class="toast"></div>
+
+  <!-- Phase 5 (sensitive tier, read_screen): per-use consent overlay near
+       her window. Session memory only: Allow once / session / Never. -->
+  <div id="consent" class="consent hidden" role="dialog" aria-label="Permission request">
+    <p class="consent-title"><span id="consent-tool-name">Kanna</span> wants permission</p>
+    <p id="consent-sub" class="consent-sub"></p>
+    <div class="consent-row">
+      <button id="consent-once" type="button" class="consent-allow">Allow once</button>
+      <button id="consent-session" type="button" class="consent-allow">Allow session</button>
+      <button id="consent-never" type="button" class="consent-never">Never</button>
+    </div>
+  </div>
 
   <script src="settings.js" defer></script>
   <script src="renderer.js" defer></script>

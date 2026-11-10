@@ -85,7 +85,7 @@
 
       const nameEl = document.createElement('span');
       nameEl.className = 'tool-name';
-      nameEl.textContent = t.name;
+      nameEl.textContent = t.sensitive ? `${t.name} *` : t.name;
 
       const desc = document.createElement('span');
       desc.className = 'tool-desc';
@@ -398,11 +398,13 @@
     if (p === 'custom') draft[p].baseUrl = els.baseUrl.value.trim();
     draft.persona = els.persona.value.trim();
     draft.agent = { enabled: !!els.agentEnabled.checked, silentTool: !!els.agentSilent.checked, maxChain: Math.max(1, Math.min(5, Number(els.agentMaxChain?.value) || 2)), disabledTools: collectDisabledTools() };
+    draft.sensitive = { screen: !!els.sensitiveScreen?.checked };
 
     const saved = await window.kanna.saveSettings({
       provider: p,
       persona: draft.persona,
-      agent: { enabled: !!els.agentEnabled.checked, silentTool: !!els.agentSilent.checked, maxChain: Math.max(1, Math.min(5, Number(els.agentMaxChain?.value) || 2)), disabledTools: collectDisabledTools() },
+      agent: draft.agent,
+      sensitive: draft.sensitive,
       openai: { apiKey: draft.openai.apiKey, model: draft.openai.model },
       anthropic: { apiKey: draft.anthropic.apiKey, model: draft.anthropic.model },
       gemini: { apiKey: draft.gemini.apiKey, model: draft.gemini.model },

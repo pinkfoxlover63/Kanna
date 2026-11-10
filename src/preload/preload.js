@@ -57,6 +57,17 @@ contextBridge.exposeInMainWorld('kanna', {
   onTimerRinging: (listener) => {
     ipcRenderer.on('kanna:timerRinging', (_e, info) => listener(info));
   },
+  // Phase 5 (sensitive tier, read_screen): per-use consent overlay.
+  // main pushes kanna:consent {requestId, tool, provider}; the overlay
+  // calls consentReply({requestId, choice}); consentClose hides it (ESC,
+  // stop button, timeout settled it in main).
+  onConsent: (listener) => {
+    ipcRenderer.on('kanna:consent', (_e, info) => listener(info));
+  },
+  onConsentClose: (listener) => {
+    ipcRenderer.on('kanna:consentClose', (_e, info) => listener(info));
+  },
+  consentReply: (payload) => ipcRenderer.send('kanna:consentReply', payload),
   // Main-pushed canned reactions (shake dizzy/angry lines).
   onShake: (listener) => {
     ipcRenderer.on('kanna:shake', (_e, g) => listener(g));

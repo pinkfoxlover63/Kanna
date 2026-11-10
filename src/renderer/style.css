@@ -561,6 +561,44 @@ header {
   z-index: 40;
 }
 
+/* Phase 5 (sensitive tier): per-use consent overlay — floats over the bottom
+   of her window with the three session-only choices. */
+.consent {
+  position: fixed;
+  left: 10px;
+  right: 10px;
+  bottom: 10px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(30, 24, 52, 0.96);
+  border: 1px solid var(--line);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 14px 42px rgba(5, 2, 18, 0.55);
+  z-index: 45;
+}
+.consent.hidden { display: none; }
+.consent-title {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.consent-sub { margin: 0 0 10px; font-size: 11.5px; line-height: 1.5; color: #c7bfe0; }
+.consent-sub code { font-size: 11px; }
+.consent-row { display: flex; gap: 6px; }
+.consent-row button {
+  flex: 1;
+  padding: 6px 4px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--ink);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.consent-row button:hover { background: rgba(255, 255, 255, 0.12); }
+.consent-row .consent-never { color: #ff9a9a; }
+
 .toast.show {
   opacity: 1;
   transform: translateX(-50%) translateY(0);

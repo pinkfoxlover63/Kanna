@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, Menu, Tray, globalShortcut } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, Tray, globalShortcut, desktopCapturer } = require('electron');
 const path = require('node:path');
 
 const settings = require('./settings');
@@ -43,6 +43,69 @@ function applyToolEffects(call, exec) {
   } else if (call.name === 'hide') {
     win?.hide();
     log.info('[toolbox]', 'window hidden by the hide tool');
+  }
+}
+
+// Sensitive tier (Phase 5) hooks: per-use consent dialog and the real
+// screen capture. Session-only consent memory (Allow session / Never),
+// reset on every app start; nothing persists to disk.
+let consentSeq = 0;
+const consentSession = {};   // tool -> allow rest of session
+const consentNever = {};     // tool -> refuse rest of session
+let consentPending = null;   // { requestId, finish } while the overlay shows
+
+function providerLabel(provider) {
+  return ({ openai: 'OpenAI', anthropic: 'Anthropic', gemini: 'Google Gemini' })[provider] || provider;
+}
+
+function askConsent(provider, tool) {
+  return new Promise((resolve) => {
+    if (consentNever[tool]) { resolve('deny'); return; }
+    if (consentSession[tool]) { resolve('allow'); return; }
+    if (!win || win.isDestroyed()) { resolve('deny'); return; }
+    const requestId = `consent-${++consentSeq}`;
+    let settled = false;
+    const finish = (choice) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      consentPending = null;
+      try { win.webContents.send('kanna:consentClose', { requestId }); } catch { /* gone */ }
+      log.info('[toolbox]', `consent ${tool}: ${choice}`);
+      resolve(choice);
+    };
+    const timer = setTimeout(() => finish('deny'), 30000);   // unanswered overlay = no
+    consentPending = { requestId, finish, tool };
+    win.webContents.send('kanna:consent', {
+      requestId,
+      tool,
+      provider: providerLabel(provider),
+    });
+  });
+}
+
+// Real capture: desktopCapturer in main. Largest attached monitor at a
+// 1920-wide ceiling, JPEG data URL — never written to disk, one-shot.
+async function captureScreen() {
+  try {
+    const sources = await desktopCapturer.getSources({
+      types: ['screen'],
+      thumbnailSize: { width: 1920, height: 1080 },
+    });
+    if (!sources?.length) return null;
+    let best = sources[0];
+    for (const s of sources) {
+      const b = s.thumbnail.getSize();
+      const c = best.thumbnail.getSize();
+      if (b.width * b.height > c.width * c.height) best = s;
+    }
+    const jpeg = best.thumbnail.toJPEG(85);
+    if (!jpeg?.length) return null;
+    log.info('[toolbox]', `screen captured (${jpeg.length} bytes, one-shot)`);
+    return { dataUrl: `data:image/jpeg;base64,${jpeg.toString('base64')}` };
+  } catch (err) {
+    log.info('[toolbox]', `screen capture failed: ${err?.message || err}`);
+    return null;
   }
 }
 
@@ -499,8 +562,11 @@ app.whenReady().then(async () => {
             if (s.agent?.enabled && !stopped) {
               // She hinted a tool without calling one; the leak text names
               // which one when it can ("[weather result] …"). Default time.
+              // Sensitive tools never ride recovery: they run only as a
+              // genuine first tool inside the chained loop (cue gate +
+              // consent dialog), never as a leak cleanup.
               const named = /\[([a-z]+)[^\]\n]{0,40}result/i.exec(String(first.text || ''));
-              const pick = named && toolbox.has(named[1]) ? named[1] : 'time';
+              const pick = named && toolbox.has(named[1]) && named[1] !== 'read_screen' ? named[1] : 'time';
               emit('chat:tool', { name: pick, chain: 1 });
               const exec = await toolbox.execute(pick, {});
               applyToolEffects({ name: pick }, exec);
@@ -552,6 +618,13 @@ app.whenReady().then(async () => {
         const s = await settings.getSettings();
         const maxChain = Math.max(1, Math.min(5, Number(s.agent?.maxChain) || 2));
         const allowSilent = !!s.agent?.silentTool;
+        // Phase 5 (sensitive tier): provider can change between saves, so
+        // the image gate re-binds every real turn; the per-turn scope
+        // (user text + tool count) is what licenses read_screen.
+        toolbox.setSensitiveConfig({ screen: !!s.sensitive?.screen });
+        toolbox.setImageCapable(['openai', 'anthropic', 'gemini'].includes(s?.provider));
+        toolbox.setTurnContext({ userText: lastUserText(messages), ts: Date.now() });
+        let pendingImage = null;   // one-shot screenshot held for the NEXT pass only
         chainStopFlag = false;
         if (s.agent?.enabled) {
           const thread = [...messages];
@@ -577,11 +650,23 @@ app.whenReady().then(async () => {
             // Post-hide gate: once she is off the desktop, no further tool
             // can run this turn (and the user is away anyway). The note-fed
             // pass then just wraps the chat up.
-            const exec = alreadyHide
-              ? { ok: false, text: 'you are hidden from the desktop — call no more tools; finish the reply with "text" only.' }
-              : await toolbox.execute(call.name, call.args);
+            // Phase 5 gate: a sensitive run this turn (untrusted screen
+            // content in context) blocks ALL later tools — nobody chains
+            // on the screenshot.
+            let exec;
+            if (alreadyHide || toolbox.chainBlocked()) {
+              const reason = alreadyHide
+                ? 'you are hidden from the desktop — call no more tools; finish the reply with "text" only.'
+                : 'all further tools of this turn are blocked: untrusted screen content is already part of it — finish purely in text, no tool key.';
+              exec = { ok: false, text: reason };
+            } else {
+              exec = await toolbox.execute(call.name, call.args);
+            }
             applyToolEffects(call, exec);
-            alreadyHide = alreadyHide || (call.name === 'hide' && exec.ok);
+            alreadyHide = alreadyHide || (call.name === 'hide' && exec.ok) || toolbox.chainBlocked();
+            // One-shot screenshot: held for the note-fed pass that answers
+            // it (below), then dropped — never stored in history/memory.
+            pendingImage = exec.image || null;
             // History: while she works on the tool, the user is idle — the
             // same bracketed asterisk pattern the shake scenes use. Thread
             // mirrors exactly what history will hold: previous pass reply
@@ -590,12 +675,15 @@ app.whenReady().then(async () => {
             if (lastPass) thread.push({ role: 'assistant', content: lastPass });
             notes.push(`*Waiting while Kanna uses her ${call.name} tool…*`);
             thread.push({ role: 'user', content: notes[notes.length - 1] });
-            thread.push({ role: 'user', content: toolNote(call, exec.text, count < maxChain) });
-            cur = await ai.runChat(thread, chainEmit, undefined, { noTriggers: true });
+            thread.push({ role: 'user', content: toolNote(call, exec.text, count < maxChain && !toolbox.chainBlocked()) });
+            cur = await ai.runChat(thread, chainEmit, undefined, { noTriggers: true, image: pendingImage });
+            pendingImage = null;   // one-shot: never reused
           }
         }
       } catch (err) {
         log.error('[toolbox] tool loop failed:', err);
+      } finally {
+        toolbox.endTurnContext();
       }
       // Plain single pass (agent off with a stray tool key): text already streams.
       if (!passes.length) passes.push(scrubLeak(cur.text).trim());
@@ -618,6 +706,20 @@ app.whenReady().then(async () => {
     const w = chainWaiter;
     chainWaiter = null;
     if (w) w();
+    // Phase 5: stop also cancels a live consent dialog (deny).
+    if (consentPending) consentPending.finish('deny');
+  });
+
+  // Consent overlay answer (Phase 5 read_screen): only the matching
+  // request id is accepted; 'allow-session' / 'never' persist that way
+  // for the rest of the session only.
+  ipcMain.on('kanna:consentReply', (_e, payload) => {
+    if (!consentPending || payload?.requestId !== consentPending.requestId) return;
+    const { tool, finish } = consentPending;
+    const choice = String(payload?.choice || 'deny');
+    if (choice === 'allow-session') consentSession[tool] = true;
+    if (choice === 'never') consentNever[tool] = true;
+    finish(choice === 'allow-once' || choice === 'allow-session' ? 'allow' : 'deny');
   });
 
   // Renderer finished speaking one chain pass (or skipped it silently).
@@ -656,6 +758,16 @@ app.whenReady().then(async () => {
     // Phase 4: bind the per-tool switches before the first chat can compose
     // a system prompt.
     toolbox.setDisabledTools(initial?.agent?.disabledTools);
+    // Phase 5 (sensitive tier): switch + provider image gate; hooks wired
+    // once (the consent wrapper re-reads settings so a provider switch
+    // mid-session is reflected in the dialog).
+    toolbox.setSensitiveConfig({ screen: !!initial?.sensitive?.screen });
+    toolbox.setImageCapable(['openai', 'anthropic', 'gemini'].includes(initial?.provider));
+    toolbox.setScreenCaptureHandler(() => captureScreen());
+    toolbox.setConsentHandler(async ({ tool }) => {
+      const s = await settings.getSettings();
+      return askConsent(s?.provider, tool);
+    });
     if (initial?.tts?.provider === 'piper') {
       tts.startPiperServer({
         piperCommand: initial.tts.piperCommand,
