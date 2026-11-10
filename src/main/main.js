@@ -444,6 +444,10 @@ app.whenReady().then(async () => {
     }
     // Phase 4: per-tool switches re-bind right away (prompt + hard gate).
     toolbox.setDisabledTools(saved?.agent?.disabledTools);
+    // Phase 5: sensitive tier re-bind too (image first so the tier log line
+    // reports the real state).
+    toolbox.setImageCapable(['openai', 'anthropic', 'gemini'].includes(saved?.provider));
+    toolbox.setSensitiveConfig({ screen: !!saved?.sensitive?.screen });
     return saved;
   });
   ipcMain.handle('models:list', (_e, provider) => ai.listModels(provider));
@@ -761,8 +765,8 @@ app.whenReady().then(async () => {
     // Phase 5 (sensitive tier): switch + provider image gate; hooks wired
     // once (the consent wrapper re-reads settings so a provider switch
     // mid-session is reflected in the dialog).
-    toolbox.setSensitiveConfig({ screen: !!initial?.sensitive?.screen });
     toolbox.setImageCapable(['openai', 'anthropic', 'gemini'].includes(initial?.provider));
+    toolbox.setSensitiveConfig({ screen: !!initial?.sensitive?.screen });
     toolbox.setScreenCaptureHandler(() => captureScreen());
     toolbox.setConsentHandler(async ({ tool }) => {
       const s = await settings.getSettings();

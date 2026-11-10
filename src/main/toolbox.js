@@ -216,11 +216,21 @@ let screenCaptureHandler = null; // main hook: desktopCapturer capture
 let consentHandler = null;       // main hook: per-use consent dialog (session-only memory)
 
 function setSensitiveConfig(cfg) {
-  sensitiveCfg = { screen: !!(cfg && cfg.screen) };
-  log.info('[toolbox]', `sensitive tier: screen=${sensitiveCfg.screen} images=${imageCapable}`);
+  const next = { screen: !!(cfg && cfg.screen) };
+  const changed = next.screen !== sensitiveCfg.screen;
+  sensitiveCfg = next;
+  // Change-only logging: main re-binds this every turn — a per-turn log
+  // line would drown the file.
+  if (changed) log.info('[toolbox]', `sensitive tier: screen=${sensitiveCfg.screen} images=${imageCapable}`);
 }
 function setImageCapable(can) {
-  imageCapable = !!can;
+  const next = !!can;
+  if (next !== imageCapable) {
+    imageCapable = next;
+    log.info('[toolbox]', `sensitive tier: screen=${sensitiveCfg.screen} images=${imageCapable}`);
+  } else {
+    imageCapable = next;
+  }
 }
 function setScreenCaptureHandler(fn) {
   screenCaptureHandler = typeof fn === 'function' ? fn : null;
