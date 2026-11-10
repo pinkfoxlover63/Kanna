@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, Menu, Tray, globalShortcut, desktopCapturer } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, Tray, globalShortcut, desktopCapturer, screen } = require('electron');
 const path = require('node:path');
 
 const settings = require('./settings');
@@ -84,10 +84,47 @@ function askConsent(provider, tool) {
   });
 }
 
+// Fullscreen transparent flash: visible proof the screen is being read.
+// Covers the largest display for ~1.3 s, never steals focus, ignores the
+// mouse, and destroys itself. Main-level so it shows even when her window
+// is hidden (`hide` tool).
+let flashWin = null;
+function flashScreenNotice() {
+  try {
+    if (flashWin) { try { flashWin.destroy(); } catch { /* already gone */ } flashWin = null; }
+    let disp = screen.getAllDisplays()[0];
+    for (const d of screen.getAllDisplays()) {
+      if (d.bounds.width * d.bounds.height > disp.bounds.width * disp.bounds.height) disp = d;
+    }
+    flashWin = new BrowserWindow({
+      x: disp.bounds.x, y: disp.bounds.y,
+      width: disp.bounds.width, height: disp.bounds.height,
+      frame: false, transparent: true, resizable: false,
+      movable: false, minimizable: false, maximizable: false,
+      skipTaskbar: true, focusable: false, show: false,
+    });
+    flashWin.setAlwaysOnTop(true, 'screen-saver');
+    flashWin.setIgnoreMouseEvents(true);
+    const html = `<!doctype html><html><head><meta charset="utf-8"><style>
+      html,body{margin:0;height:100%;background:transparent;overflow:hidden;cursor:none}
+      #f{position:fixed;inset:0;box-shadow:inset 0 0 min(18vw,240px) rgba(255,72,72,.6);animation:p .55s ease-in-out 2;pointer-events:none}
+      #t{position:fixed;top:5vh;left:0;right:0;text-align:center;font:600 22px/1.3 'Segoe UI',system-ui,sans-serif;color:#fff;text-shadow:0 1px 10px rgba(0,0,0,.75);opacity:0;animation:t .55s ease-out .1s 2 alternate;pointer-events:none}
+      @keyframes p{0%,100%{opacity:0}45%{opacity:1}}
+      @keyframes t{from{opacity:0}to{opacity:1}}
+      </style></head><body><div id="f"></div><div id="t">Kanna is reading your screen</div></body></html>`;
+    flashWin.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
+    flashWin.once('ready-to-show', () => { try { flashWin?.showInactive(); } catch { /* closed */ } });
+    setTimeout(() => { try { flashWin?.destroy(); } catch { /* already gone */ } flashWin = null; }, 1300);
+  } catch (err) {
+    log.info('[toolbox]', `screen flash failed: ${err?.message || err}`);
+  }
+}
+
 // Real capture: desktopCapturer in main. Largest attached monitor at a
 // 1920-wide ceiling, JPEG data URL — never written to disk, one-shot.
 async function captureScreen() {
   try {
+    flashScreenNotice();
     const sources = await desktopCapturer.getSources({
       types: ['screen'],
       thumbnailSize: { width: 1920, height: 1080 },
