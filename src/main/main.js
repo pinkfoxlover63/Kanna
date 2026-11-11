@@ -61,9 +61,9 @@ function providerLabel(provider) {
 
 function askConsent(provider, tool, opts = {}) {
   return new Promise((resolve) => {
-    if (consentNever[tool]) { resolve('deny'); return; }
+    if (consentNever[tool]) { log.info('[toolbox]', `consent ${tool}: deny (never, this session)`); resolve('deny'); return; }
     // Input actions never get a session-sticky grant (plan: no session-skip).
-    if (!opts.noSession && consentSession[tool]) { resolve('allow'); return; }
+    if (!opts.noSession && consentSession[tool]) { log.info('[toolbox]', `consent ${tool}: allow (session grant)`); resolve('allow'); return; }
     if (!win || win.isDestroyed()) { resolve('deny'); return; }
     const requestId = `consent-${++consentSeq}`;
     let settled = false;
@@ -158,13 +158,19 @@ function flashScreenNotice() {
 }
 
 // Real capture: desktopCapturer in main. Largest attached monitor at a
-// 1920-wide ceiling, JPEG data URL — never written to disk, one-shot.
+// 2560-wide ceiling (native resolution up to that — 1:1 pixels make the
+// model's coordinates map exactly onto the screen), JPEG data URL — never
+// written to disk, one-shot.
 async function captureScreen() {
   try {
     flashScreenNotice();
+    const disp = largestDisplay();
+    // Near-native size: cap at 2560 wide to keep vision tokens sane.
+    const capW = Math.min(disp.bounds.width, 2560);
+    const capH = Math.round(disp.bounds.height * capW / disp.bounds.width);
     const sources = await desktopCapturer.getSources({
       types: ['screen'],
-      thumbnailSize: { width: 1920, height: 1080 },
+      thumbnailSize: { width: capW, height: capH },
     });
     if (!sources?.length) return null;
     let best = sources[0];
@@ -176,12 +182,12 @@ async function captureScreen() {
     const jpeg = best.thumbnail.toJPEG(85);
     if (!jpeg?.length) return null;
     const size = best.thumbnail.getSize();
-    const disp = screen.getAllDisplays().find((d) => String(d.id) === String(best.display_id)) || largestDisplay();
+    const shotDisp = screen.getAllDisplays().find((d) => String(d.id) === String(best.display_id)) || disp;
     log.info('[toolbox]', `screen captured (${jpeg.length} bytes, one-shot)`);
     return {
       dataUrl: `data:image/jpeg;base64,${jpeg.toString('base64')}`,
       imgW: size.width, imgH: size.height,
-      bounds: disp.bounds,
+      bounds: shotDisp.bounds,
     };
   } catch (err) {
     log.info('[toolbox]', `screen capture failed: ${err?.message || err}`);
@@ -230,6 +236,74 @@ async function injectMouse({ x, y, click, button, double: dbl }) {
     p.on('error', (err) => { log.info('[toolbox]', `mouse inject failed: ${err?.message || err}`); finish(false); });
     setTimeout(() => { try { p.kill(); } catch { /* gone */ } finish(false); }, 8000);
   });
+}
+
+// Two-phase click (user design): mark the model's chosen point on the
+// retained screenshot so it can verify against the real target. Draws a
+// magenta crosshair with white halo + green center dot straight into the
+// BGRA bitmap — visible on any background. No consent needed: nothing is
+// clicked, the already-captured pixels are only annotated.
+function markScreenPoint({ dataUrl, x, y }) {
+  try {
+    const { nativeImage } = require('electron');
+    const img = nativeImage.createFromDataURL(dataUrl);
+    const size = img.getSize();
+    const W = size.width, H = size.height;
+    const buf = Buffer.from(img.toBitmap());   // BGRA, opaque source
+    const cx = Math.max(0, Math.min(W - 1, Math.round(Number(x) || 0)));
+    const cy = Math.max(0, Math.min(H - 1, Math.round(Number(y) || 0)));
+    const put = (px, py, b, g, r) => {
+      if (px < 0 || py < 0 || px >= W || py >= H) return;
+      const i = (py * W + px) * 4;
+      buf[i] = b; buf[i + 1] = g; buf[i + 2] = r; buf[i + 3] = 255;
+    };
+    const R = 26;   // ring radius, image px
+    for (let dy = -R - 2; dy <= R + 2; dy++) {
+      for (let dx = -R - 2; dx <= R + 2; dx++) {
+        const d2 = dx * dx + dy * dy;
+        if (d2 >= (R - 2) * (R - 2) && d2 <= (R + 2) * (R + 2)) put(cx + dx, cy + dy, 255, 255, 255);
+        if (d2 >= (R - 5) * (R - 5) && d2 <= (R - 1) * (R - 1)) put(cx + dx, cy + dy, 255, 0, 255);
+      }
+    }
+    for (let k = -R - 16; k <= R + 16; k++) {
+      if (Math.abs(k) > R + 2) {
+        put(cx + k, cy, 255, 0, 255); put(cx + k, cy - 1, 255, 255, 255); put(cx + k, cy + 1, 255, 255, 255);
+        put(cx, cy + k, 255, 0, 255); put(cx - 1, cy + k, 255, 255, 255); put(cx + 1, cy + k, 255, 255, 255);
+      }
+    }
+    for (let d = -3; d <= 3; d++) { put(cx + d, cy, 0, 255, 0); put(cx, cy + d, 0, 255, 0); }
+    const marked = nativeImage.createFromBitmap(buf, { width: W, height: H });
+    return { dataUrl: `data:image/jpeg;base64,${marked.toJPEG(90).toString('base64')}`, imgW: W, imgH: H };
+  } catch (err) {
+    log.info('[toolbox]', `screen mark failed: ${err?.message || err}`);
+    return null;
+  }
+}
+
+// Zoom crop (Phase 5 precision): cut the region out of THIS turn's retained
+// full screenshot and magnify it (~3x, capped 1280 wide) for fine aiming.
+// No new capture, no flash, no consent — these pixels were already
+// consented and captured this turn; nothing new leaves the desktop.
+function cropScreenImage({ dataUrl, x, y, w, h }) {
+  try {
+    const { nativeImage } = require('electron');
+    const img = nativeImage.createFromDataURL(dataUrl);
+    const size = img.getSize();
+    const rx = Math.max(0, Math.min(size.width - 1, Math.round(Number(x) || 0)));
+    const ry = Math.max(0, Math.min(size.height - 1, Math.round(Number(y) || 0)));
+    const rw = Math.max(1, Math.min(size.width - rx, Math.round(Number(w) || 0)));
+    const rh = Math.max(1, Math.min(size.height - ry, Math.round(Number(h) || 0)));
+    let crop = img.crop({ x: rx, y: ry, width: rw, height: rh });
+    const targetW = Math.min(1280, rw * 3);
+    if (targetW > rw) {
+      crop = crop.resize({ width: targetW, height: Math.round(targetW * rh / rw), quality: 'best' });
+    }
+    const out = crop.getSize();
+    return { dataUrl: `data:image/jpeg;base64,${crop.toJPEG(90).toString('base64')}`, imgW: out.width, imgH: out.height };
+  } catch (err) {
+    log.info('[toolbox]', `zoom crop failed: ${err?.message || err}`);
+    return null;
+  }
 }
 
 // Overlay page: file-based like the flash (data: pages can't load images).
@@ -810,7 +884,8 @@ app.whenReady().then(async () => {
       const passes = [];
       const notes = [];
       let cur = first;
-      let count = 0;
+      let count = 0;       // pass index (each tool run feeds one note pass)
+      let toolCount = 0;   // tools counted against maxChain — the zoom crop is free
       // Resolves when the renderer finished speaking the current pass
       // (or used the silent path), the user pressed stop, or ~5 min passed
       // in case a speech engine wedged.
@@ -855,9 +930,16 @@ app.whenReady().then(async () => {
               if (chainStopFlag) { stopped = true; break; }
             }
             if (cur.stopped) { stopped = true; break; }
-            if (!cur.tool || count >= maxChain) break;
+            if (!cur.tool || (toolCount >= maxChain && !toolbox.chainFreeCall(cur.tool.name, cur.tool.args))) break;
             count++;
             const call = cur.tool;
+            // Free calls never burn a chain slot: a read_screen zoom call
+            // (region args, follow-up still open) refines the capture already
+            // taken, and use_click verify round-trips are one logical click.
+            if (!(call.name === 'read_screen' && toolbox.isZoomCall(call.args) && toolbox.canZoom())
+              && !toolbox.chainFreeCall(call.name, call.args)) {
+              toolCount++;
+            }
             emit('chat:tool', { name: call.name, chain: count, maxChain });
             log.info('[toolbox]', `chain tool #${count}/${maxChain}: ${call.name}`);
             // Post-hide gate: once she is off the desktop, no further tool
@@ -892,7 +974,7 @@ app.whenReady().then(async () => {
             if (lastPass) thread.push({ role: 'assistant', content: lastPass });
             notes.push(`*Waiting while Kanna uses her ${call.name} tool…*`);
             thread.push({ role: 'user', content: notes[notes.length - 1] });
-            thread.push({ role: 'user', content: toolNote(call, exec.text, count < maxChain && !toolbox.chainBlocked(call.name)) });
+            thread.push({ role: 'user', content: toolNote(call, exec.text, toolCount < maxChain && !alreadyHide && toolbox.chainAnyNext()) });
             cur = await ai.runChat(thread, chainEmit, undefined, { noTriggers: true, image: pendingImage });
             pendingImage = null;   // one-shot: never reused
           }
@@ -984,6 +1066,8 @@ app.whenReady().then(async () => {
     toolbox.setImageCapable(['openai', 'anthropic', 'gemini'].includes(initial?.provider));
     toolbox.setSensitiveConfig({ screen: !!initial?.sensitive?.screen, input: !!initial?.sensitive?.input });
     toolbox.setScreenCaptureHandler(() => captureScreen());
+    toolbox.setScreenCropHandler(cropScreenImage);
+    toolbox.setScreenMarkHandler(markScreenPoint);
     toolbox.setConsentHandler(async ({ tool, detail, noSession }) => {
       const s = await settings.getSettings();
       return askConsent(s?.provider, tool, { detail, noSession });

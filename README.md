@@ -52,7 +52,7 @@ your choice of AI provider.
 - **Agent mode / Tools tab** - optional toolbox lives under Settings -> Tools: Agent mode on/off, a 1-5 "Max chained tools per turn" slider, per-tool switches (time, weather, remember, background, hide, timer, timer_cancel, etc.), Silent chaining toggle, and a Tool log in the History drawer. Off by default; timer results wake a follow-up "*Kanna's timer ringing*" turn.
 
 - **Screen reading (sensitive tier)** — with Agent mode on, Kanna can look at your screen once per request (`read_screen`), only when your latest message asks for it and only on image providers (OpenAI, Anthropic, Gemini). Every single use pops a consent overlay that names what is sent and where (Allow once / Allow session / Never — session memory only), a screenshot is never saved to disk or chat history, and strict screen rules run in both the model prompt and the tool engine so on-screen text can never command her. Off by default in Settings → Tools.
-- Optional input automation (sensitive tier, off by default): she can move your cursor and click at points she saw in a fresh screenshot — with a visible virtual-cursor preview, an allow-once confirm per action, and stop-anytime.
+- Optional input automation (sensitive tier, off by default): she can move your cursor and click at points she saw in a fresh screenshot — with a visible virtual-cursor preview, an allow-once confirm per action, and stop-anytime. Clicks are never blind: she points, the point is marked on the screenshot with a crosshair, and the click only lands after she verifies the marker (up to 3 corrections).
 
 - **Speech-to-text** — 🎤 in the composer transcribes locally with
   Vosk (click to talk, click again to insert); final text lands in the input
