@@ -59,10 +59,11 @@ function providerLabel(provider) {
   return ({ openai: 'OpenAI', anthropic: 'Anthropic', gemini: 'Google Gemini' })[provider] || provider;
 }
 
-function askConsent(provider, tool) {
+function askConsent(provider, tool, opts = {}) {
   return new Promise((resolve) => {
     if (consentNever[tool]) { resolve('deny'); return; }
-    if (consentSession[tool]) { resolve('allow'); return; }
+    // Input actions never get a session-sticky grant (plan: no session-skip).
+    if (!opts.noSession && consentSession[tool]) { resolve('allow'); return; }
     if (!win || win.isDestroyed()) { resolve('deny'); return; }
     const requestId = `consent-${++consentSeq}`;
     let settled = false;
@@ -81,8 +82,20 @@ function askConsent(provider, tool) {
       requestId,
       tool,
       provider: providerLabel(provider),
+      detail: opts.detail || '',
+      noSession: !!opts.noSession,
     });
   });
+}
+
+// Largest attached display — the one both the flash and the input overlay
+// cover (matches captureScreen's "largest monitor" pick).
+function largestDisplay() {
+  let disp = screen.getAllDisplays()[0];
+  for (const d of screen.getAllDisplays()) {
+    if (d.bounds.width * d.bounds.height > disp.bounds.width * disp.bounds.height) disp = d;
+  }
+  return disp;
 }
 
 // Fullscreen transparent flash: visible proof the screen is being read.
@@ -93,10 +106,7 @@ let flashWin = null;
 function flashScreenNotice() {
   try {
     if (flashWin) { try { flashWin.destroy(); } catch { /* already gone */ } flashWin = null; }
-    let disp = screen.getAllDisplays()[0];
-    for (const d of screen.getAllDisplays()) {
-      if (d.bounds.width * d.bounds.height > disp.bounds.width * disp.bounds.height) disp = d;
-    }
+    const disp = largestDisplay();
     flashWin = new BrowserWindow({
       x: disp.bounds.x, y: disp.bounds.y,
       width: disp.bounds.width, height: disp.bounds.height,
@@ -165,11 +175,145 @@ async function captureScreen() {
     }
     const jpeg = best.thumbnail.toJPEG(85);
     if (!jpeg?.length) return null;
+    const size = best.thumbnail.getSize();
+    const disp = screen.getAllDisplays().find((d) => String(d.id) === String(best.display_id)) || largestDisplay();
     log.info('[toolbox]', `screen captured (${jpeg.length} bytes, one-shot)`);
-    return { dataUrl: `data:image/jpeg;base64,${jpeg.toString('base64')}` };
+    return {
+      dataUrl: `data:image/jpeg;base64,${jpeg.toString('base64')}`,
+      imgW: size.width, imgH: size.height,
+      bounds: disp.bounds,
+    };
   } catch (err) {
     log.info('[toolbox]', `screen capture failed: ${err?.message || err}`);
     return null;
+  }
+}
+
+// --- Phase 5b: input automation (use_move / use_click) ----------------------
+// The virtual cursor: a fullscreen transparent overlay (same recipe as the
+// flash) that visibly travels to the target, holds a beat (the preview the
+// user can still stop), and only then lands the real click via a PowerShell
+// user32 helper — no native modules. The bottom-right pictogram
+// (assets/input-overlay/mouse.png) shows what kind of input is live.
+const MOVE_MS = 650;   // cursor travel time (tool-side mirror: toolbox.js)
+const DWELL_MS = 400;  // visible hold on the target before the click lands
+
+let inputOverlayWin = null;
+let inputAbort = false;
+
+function killInputOverlay() {
+  try { inputOverlayWin?.destroy(); } catch { /* already gone */ }
+  inputOverlayWin = null;
+}
+
+// One PowerShell roundtrip: SetCursorPos + mouse_event. Compiled once per
+// spawn; ~300 ms total, fine for a click. Flags: LEFTDOWN 2 / LEFTUP 4 /
+// RIGHTDOWN 8 / RIGHTUP 16.
+async function injectMouse({ x, y, click, button, double: dbl }) {
+  const flags = [];
+  if (click) {
+    if (button === 'right') flags.push(8, 4);
+    else flags.push(2, 4);
+    if (dbl) flags.push(2, 4); // second press for a double-click
+  }
+  const down = flags.join(', ');
+  const ps = `$sig='[DllImport("user32.dll")]public static extern bool SetCursorPos(int x,int y);[DllImport("user32.dll")]public static extern void mouse_event(uint f,uint dx,uint dy,uint d,UIntPtr e);';` +
+    `Add-Type -MemberDefinition $sig -Name M -Namespace W;` +
+    `[W.M]::SetCursorPos(${x},${y})|Out-Null;Start-Sleep -m 40;` +
+    (flags.length ? `foreach($f in @(${down})){[W.M]::mouse_event($f,0,0,0,[UIntPtr]::Zero);Start-Sleep -m 30;}` : '');
+  const { spawn } = require('node:child_process');
+  return new Promise((resolve) => {
+    const p = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], { windowsHide: true });
+    let done = false;
+    const finish = (ok) => { if (!done) { done = true; resolve(ok); } };
+    p.on('close', () => finish(true));
+    p.on('error', (err) => { log.info('[toolbox]', `mouse inject failed: ${err?.message || err}`); finish(false); });
+    setTimeout(() => { try { p.kill(); } catch { /* gone */ } finish(false); }, 8000);
+  });
+}
+
+// Overlay page: file-based like the flash (data: pages can't load images).
+// Params baked in at write time — no IPC roundtrip needed.
+function showInputOverlay({ mode, fromX, fromY, toX, toY, durMs }) {
+  killInputOverlay();
+  const disp = largestDisplay();
+  const art = (p) => {
+    try {
+      const { pathToFileURL } = require('node:url');
+      return pathToFileURL(path.join(__dirname, '../../assets', p)).href;
+    } catch {
+      return '';
+    }
+  };
+  inputOverlayWin = new BrowserWindow({
+    x: disp.bounds.x, y: disp.bounds.y,
+    width: disp.bounds.width, height: disp.bounds.height,
+    frame: false, transparent: true, resizable: false,
+    movable: false, minimizable: false, maximizable: false,
+    skipTaskbar: true, show: false,
+  });
+  const ov = inputOverlayWin;
+  ov.setAlwaysOnTop(true, 'screen-saver');
+  ov.setIgnoreMouseEvents(true);
+  ov.once('closed', () => { if (inputOverlayWin === ov) inputOverlayWin = null; });
+  const html = `<!doctype html><html><head><meta charset="utf-8"><style>
+    html,body{margin:0;height:100%;background:transparent;overflow:hidden;cursor:none}
+    #c{position:fixed;width:34px;margin-left:-4px;margin-top:-2px;pointer-events:none;filter:drop-shadow(0 2px 4px rgba(0,0,0,.5));z-index:2}
+    #ov{position:fixed;right:14px;bottom:14px;width:110px;pointer-events:none;filter:drop-shadow(0 2px 6px rgba(0,0,0,.45));z-index:3}
+    </style></head><body>
+    <img id="ov" src="${art(`input-overlay/${mode}.png`)}" alt="">
+    <img id="c" src="${art(mode === 'keyboard' ? 'cursor/text.png' : 'cursor/pointer.png')}" alt="">
+    <script>
+    const c=document.getElementById('c');
+    const fx=${fromX},fy=${fromY},tx=${toX},ty=${toY},ms=${durMs};
+    c.style.left=fx+'px';c.style.top=fy+'px';
+    const t0=performance.now();
+    (function step(){
+      const k=Math.min(1,(performance.now()-t0)/ms);
+      const e=k<.5?2*k*k:1-Math.pow(-2*k+2,2)/2; // easeInOutQuad
+      c.style.left=(fx+(tx-fx)*e)+'px';
+      c.style.top=(fy+(ty-fy)*e)+'px';
+      if(k<1)requestAnimationFrame(step);
+    })();
+    </script></body></html>`;
+  const overlayFile = path.join(app.getPath('temp'), 'kanna-input-overlay.html');
+  fs.writeFileSync(overlayFile, html);
+  ov.loadFile(overlayFile)
+    .then(() => { if (inputOverlayWin && !inputOverlayWin.isDestroyed()) inputOverlayWin.showInactive(); })
+    .catch((err) => log.info('[toolbox]', `input overlay load failed: ${err?.message || err}`));
+  return ov;
+}
+
+// The toolbox hook. Flow: overlay cursor animates to the target (MOVE_MS),
+// holds DWELL_MS as the visible preview, then the real input lands. The
+// chat stop button or any failure aborts before the click.
+async function runInputAction({ kind, x, y, button, double: dbl }) {
+  inputAbort = false;
+  try {
+    const disp = largestDisplay();
+    const start = screen.getCursorScreenPoint();
+    // Overlay-relative coords (overlay covers only the largest display).
+    const fromX = Math.max(0, Math.min(disp.bounds.width - 1, start.x - disp.bounds.x));
+    const fromY = Math.max(0, Math.min(disp.bounds.height - 1, start.y - disp.bounds.y));
+    const toX = Math.max(0, Math.min(disp.bounds.width - 1, x - disp.bounds.x));
+    const toY = Math.max(0, Math.min(disp.bounds.height - 1, y - disp.bounds.y));
+    showInputOverlay({ mode: 'mouse', fromX, fromY, toX, toY, durMs: MOVE_MS });
+    await new Promise((r) => setTimeout(r, MOVE_MS + DWELL_MS));
+    if (inputAbort) {
+      killInputOverlay();
+      return { ok: false, text: 'the user stopped the action — the cursor never landed; do not retry this turn.' };
+    }
+    const click = kind === 'click';
+    const ok = await injectMouse({ x, y, click, button: button === 'right' ? 'right' : 'left', double: dbl });
+    await new Promise((r) => setTimeout(r, 250));
+    killInputOverlay();
+    log.info('[toolbox]', `input ${kind} at ${x},${y}: ${ok ? 'done' : 'failed'}`);
+    if (!ok) return { ok: false, text: 'the input injection failed (helper did not run)' };
+    return { ok: true, button: click ? (button === 'right' ? 'right' : 'left') : 'none', double: !!dbl };
+  } catch (err) {
+    killInputOverlay();
+    log.info('[toolbox]', `input action failed: ${err?.message || err}`);
+    return { ok: false, text: `the cursor action failed: ${String(err?.message || err)}` };
   }
 }
 
@@ -511,7 +655,7 @@ app.whenReady().then(async () => {
     // Phase 5: sensitive tier re-bind too (image first so the tier log line
     // reports the real state).
     toolbox.setImageCapable(['openai', 'anthropic', 'gemini'].includes(saved?.provider));
-    toolbox.setSensitiveConfig({ screen: !!saved?.sensitive?.screen });
+    toolbox.setSensitiveConfig({ screen: !!saved?.sensitive?.screen, input: !!saved?.sensitive?.input });
     return saved;
   });
   ipcMain.handle('models:list', (_e, provider) => ai.listModels(provider));
@@ -689,7 +833,7 @@ app.whenReady().then(async () => {
         // Phase 5 (sensitive tier): provider can change between saves, so
         // the image gate re-binds every real turn; the per-turn scope
         // (user text + tool count) is what licenses read_screen.
-        toolbox.setSensitiveConfig({ screen: !!s.sensitive?.screen });
+        toolbox.setSensitiveConfig({ screen: !!s.sensitive?.screen, input: !!s.sensitive?.input });
         toolbox.setImageCapable(['openai', 'anthropic', 'gemini'].includes(s?.provider));
         toolbox.setTurnContext({ userText: lastUserText(messages), ts: Date.now() });
         let pendingImage = null;   // one-shot screenshot held for the NEXT pass only
@@ -715,6 +859,7 @@ app.whenReady().then(async () => {
             count++;
             const call = cur.tool;
             emit('chat:tool', { name: call.name, chain: count, maxChain });
+            log.info('[toolbox]', `chain tool #${count}/${maxChain}: ${call.name}`);
             // Post-hide gate: once she is off the desktop, no further tool
             // can run this turn (and the user is away anyway). The note-fed
             // pass then just wraps the chat up.
@@ -722,7 +867,8 @@ app.whenReady().then(async () => {
             // content in context) blocks ALL later tools — nobody chains
             // on the screenshot.
             let exec;
-            if (alreadyHide || toolbox.chainBlocked()) {
+            if (alreadyHide || toolbox.chainBlocked(call.name)) {
+              log.info('[toolbox]', `chain pre-gate blocked ${call.name}: hide=${alreadyHide} lock=${toolbox.chainBlocked(call.name)}`);
               const reason = alreadyHide
                 ? 'you are hidden from the desktop — call no more tools; finish the reply with "text" only.'
                 : 'all further tools of this turn are blocked: untrusted screen content is already part of it — finish purely in text, no tool key.';
@@ -731,7 +877,10 @@ app.whenReady().then(async () => {
               exec = await toolbox.execute(call.name, call.args);
             }
             applyToolEffects(call, exec);
-            alreadyHide = alreadyHide || (call.name === 'hide' && exec.ok) || toolbox.chainBlocked();
+            // alreadyHide tracks ONLY the hide tool — the sensitive lock is
+            // re-checked per call above (input tools may follow read_screen,
+            // so the lock must not poison this flag).
+            alreadyHide = alreadyHide || (call.name === 'hide' && exec.ok);
             // One-shot screenshot: held for the note-fed pass that answers
             // it (below), then dropped — never stored in history/memory.
             pendingImage = exec.image || null;
@@ -743,7 +892,7 @@ app.whenReady().then(async () => {
             if (lastPass) thread.push({ role: 'assistant', content: lastPass });
             notes.push(`*Waiting while Kanna uses her ${call.name} tool…*`);
             thread.push({ role: 'user', content: notes[notes.length - 1] });
-            thread.push({ role: 'user', content: toolNote(call, exec.text, count < maxChain && !toolbox.chainBlocked()) });
+            thread.push({ role: 'user', content: toolNote(call, exec.text, count < maxChain && !toolbox.chainBlocked(call.name)) });
             cur = await ai.runChat(thread, chainEmit, undefined, { noTriggers: true, image: pendingImage });
             pendingImage = null;   // one-shot: never reused
           }
@@ -774,8 +923,11 @@ app.whenReady().then(async () => {
     const w = chainWaiter;
     chainWaiter = null;
     if (w) w();
-    // Phase 5: stop also cancels a live consent dialog (deny).
+    // Phase 5: stop also cancels a live consent dialog (deny) and aborts a
+    // pending input action before its click lands.
     if (consentPending) consentPending.finish('deny');
+    inputAbort = true;
+    killInputOverlay();
   });
 
   // Consent overlay answer (Phase 5 read_screen): only the matching
@@ -830,12 +982,13 @@ app.whenReady().then(async () => {
     // once (the consent wrapper re-reads settings so a provider switch
     // mid-session is reflected in the dialog).
     toolbox.setImageCapable(['openai', 'anthropic', 'gemini'].includes(initial?.provider));
-    toolbox.setSensitiveConfig({ screen: !!initial?.sensitive?.screen });
+    toolbox.setSensitiveConfig({ screen: !!initial?.sensitive?.screen, input: !!initial?.sensitive?.input });
     toolbox.setScreenCaptureHandler(() => captureScreen());
-    toolbox.setConsentHandler(async ({ tool }) => {
+    toolbox.setConsentHandler(async ({ tool, detail, noSession }) => {
       const s = await settings.getSettings();
-      return askConsent(s?.provider, tool);
+      return askConsent(s?.provider, tool, { detail, noSession });
     });
+    toolbox.setInputHandler(runInputAction);
     if (initial?.tts?.provider === 'piper') {
       tts.startPiperServer({
         piperCommand: initial.tts.piperCommand,

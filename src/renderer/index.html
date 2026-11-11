@@ -61,6 +61,12 @@
           <datalist id="model-list"></datalist>
         </label>
 
+        <label class="field" id="field-tinyfish">
+          <span>TinyFish API key</span>
+          <input id="tinyfish-key" type="password" spellcheck="false" placeholder="key…">
+          <p class="hint">Optional, for the <code>web_search</code> tool (agent mode): live web results via TinySearch. Get a free key at agent.tinyfish.ai/api-keys (12,000 searches/day). Saved encrypted like the other keys.</p>
+        </label>
+
         <p class="note">Keys are encrypted with your OS account and stored in the app data folder.</p>
       </div>
 
@@ -76,7 +82,7 @@
       <div class="tab-panel" data-panel="tools">
         <label class="field">
           <span>Agent mode (toolbox)<input id="agent-enabled" type="checkbox"></span>
-          <p class="hint">Lets her use real desktop tools when a question needs them — currently <code>time</code> (date/time), <code>weather</code> (wttr.in lookup), <code>remember</code> (self-write one durable memory fact), <code>background</code> (swap her room's wallpaper scene), and <code>hide</code> (she tucks her window away; you summon her back with Ctrl+Shift+K). She can chain up to Max chained tools per turn, one reply per tool. Best with capable models: small models often garble the tool-call JSON and fumble chains. Off by default: with agent mode off she never calls tools.</p>
+          <p class="hint">Lets her use real desktop tools when a question needs them — currently <code>time</code> (date/time), <code>weather</code> (wttr.in lookup), <code>web_search</code> (live web results; needs a TinyFish key in Brain), <code>remember</code> (self-write one durable memory fact), <code>background</code> (swap her room's wallpaper scene), and <code>hide</code> (she tucks her window away; you summon her back with Ctrl+Shift+K). She can chain up to Max chained tools per turn, one reply per tool. Best with capable models: small models often garble the tool-call JSON and fumble chains. Off by default: with agent mode off she never calls tools.</p>
         </label>
         <label class="field">
           <span>Silent chaining (skip voice mid-chain)<input id="agent-silent" type="checkbox"></span>
@@ -91,6 +97,9 @@
           <span>Screen reading (sensitive)<input id="sensitive-screen" type="checkbox"></span>
           <p class="hint">Phase 5 sensitive tier. Lets her look at your screen once via <code>read_screen</code>, only when your latest message asks for it, and only on image providers (OpenAI, Anthropic, Gemini). Every use pops a consent overlay naming what gets sent and where; a screenshot is never saved to disk or history. Off by default.</p>
         </label>
+        <label>
+          <span>Input automation (sensitive)<input id="sensitive-input" type="checkbox"></span>
+          <p class="hint">Phase 5b. Lets her move your cursor (<code>use_move</code>) and click (<code>use_click</code>) at points she saw in a fresh screenshot. The virtual cursor travels on screen first so you can see where it is heading; every action needs its own allow-once confirm and stop cancels it before it lands. Off by default.</p>
         <label class="field" id="tool-switches-field">
           <span>Tool switches (per tool)</span>
           <div id="tool-switches" class="tool-switches"></div>

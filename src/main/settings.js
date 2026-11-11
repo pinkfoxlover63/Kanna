@@ -28,12 +28,14 @@ const DEFAULT_SETTINGS = {
   },
   sensitive: {
     screen: false, // Phase 5 sensitive tier: screen reading (read_screen tool); session-only consents at use time
+    input: false,  // Phase 5b: input automation (use_move / use_click); allow-once per action, never session-sticky
   },
   openai: { apiKey: '', model: 'gpt-4o-mini' },
   anthropic: { apiKey: '', model: 'claude-sonnet-4-5' },
   gemini: { apiKey: '', model: 'gemini-2.5-flash' },
   custom: { apiKey: '', model: '', baseUrl: 'https://api.openai.com/v1' },
   opencode: { apiKey: '', model: 'glm-5.3-flash-free' },
+  tinyfish: { apiKey: '' }, // TinyFish web-search key (web_search tool), not a chat provider
   window: { x: null, y: null },
   tts: {
     provider: 'piper',     // 'builtin' | 'piper' | 'elevenlabs' | 'openai' | 'azure' | 'google'
@@ -62,7 +64,7 @@ const DEFAULT_SETTINGS = {
 };
 
 // Where API keys live in the settings shape.
-const KEY_FIELDS = ['openai', 'anthropic', 'gemini', 'custom', 'opencode'];
+const KEY_FIELDS = ['openai', 'anthropic', 'gemini', 'custom', 'opencode', 'tinyfish'];
 
 // TTS provider credentials live nested under settings.tts (not top-level
 // provider groups), so they're handled separately but encrypted the same way.

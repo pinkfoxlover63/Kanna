@@ -38,6 +38,7 @@
     agentMaxChain: $('#agent-maxchain'),
     agentMaxChainVal: $('#agent-maxchain-val'),
     sensitiveScreen: $('#sensitive-screen'),
+    sensitiveInput: $('#sensitive-input'),
     toolSwitches: $('#tool-switches'),
   };
 
@@ -322,8 +323,9 @@
       if (els.agentMaxChainVal) els.agentMaxChainVal.textContent = String(v);
     }
     renderToolSwitches();
-    // Phase 5: sensitive tier checkbox reflects the saved switch.
+    // Phase 5: sensitive tier checkboxes reflect the saved switches.
     if (els.sensitiveScreen) els.sensitiveScreen.checked = !!(draft.sensitive && draft.sensitive.screen);
+    if (els.sensitiveInput) els.sensitiveInput.checked = !!(draft.sensitive && draft.sensitive.input);
 
     // --- TTS ---
     const t = draft.tts || (draft.tts = { provider:'builtin', voice:'', rate:1, pitch:1, muted:false, openaiKey:'', elevenlabsKey:'', azureKey:'', azureRegion:'', googleKey:'', piperCommand:'py', piperModel:'', piperDataDir:'', piperUseGpu:false });
@@ -403,7 +405,7 @@
     if (p === 'custom') draft[p].baseUrl = els.baseUrl.value.trim();
     draft.persona = els.persona.value.trim();
     draft.agent = { enabled: !!els.agentEnabled.checked, silentTool: !!els.agentSilent.checked, maxChain: Math.max(1, Math.min(5, Number(els.agentMaxChain?.value) || 2)), disabledTools: collectDisabledTools() };
-    draft.sensitive = { screen: !!els.sensitiveScreen?.checked };
+    draft.sensitive = { screen: !!els.sensitiveScreen?.checked, input: !!els.sensitiveInput?.checked };
 
     const saved = await window.kanna.saveSettings({
       provider: p,

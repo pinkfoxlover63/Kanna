@@ -985,7 +985,17 @@ async function runShakeAI(shakes) {
     if (!consentEl) { window.kanna.consentReply({ requestId: info?.requestId, choice: 'never' }); return; }
     consentLiveId = String(info?.requestId || '');
     consentTool.textContent = 'Kanna';
-    consentSub.innerHTML = `She wants to <b>read your screen once</b>. What she sees is sent to <code>${String(info?.provider || 'the provider').replace(/[<>&]/g, '')}</code> and nowhere else. Nothing is saved to disk or history.`;
+    if (info?.detail) {
+      // Input automation: exact action named by main; nothing leaves the
+      // machine, and there is no session-sticky grant to offer.
+      consentSub.innerHTML = `She wants to <b>${String(info.detail).replace(/[<>&]/g, '')}</b>. This acts on your computer only — nothing is sent to any provider.`;
+      const sessionBtn = document.getElementById('consent-session');
+      if (sessionBtn) sessionBtn.classList.add('hidden');
+    } else {
+      consentSub.innerHTML = `She wants to <b>read your screen once</b>. What she sees is sent to <code>${String(info?.provider || 'the provider').replace(/[<>&]/g, '')}</code> and nowhere else. Nothing is saved to disk or history.`;
+      const sessionBtn = document.getElementById('consent-session');
+      if (sessionBtn) sessionBtn.classList.remove('hidden');
+    }
     consentEl.classList.remove('hidden');
   });
   window.kanna.onConsentClose?.(() => hideConsent());
