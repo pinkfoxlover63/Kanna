@@ -259,7 +259,7 @@ function showInputOverlay({ mode, fromX, fromY, toX, toY, durMs }) {
   const html = `<!doctype html><html><head><meta charset="utf-8"><style>
     html,body{margin:0;height:100%;background:transparent;overflow:hidden;cursor:none}
     #c{position:fixed;width:34px;margin-left:-4px;margin-top:-2px;pointer-events:none;filter:drop-shadow(0 2px 4px rgba(0,0,0,.5));z-index:2}
-    #ov{position:fixed;right:14px;bottom:14px;width:110px;pointer-events:none;filter:drop-shadow(0 2px 6px rgba(0,0,0,.45));z-index:3}
+    #ov{position:fixed;right:14px;bottom:14px;width:165px;pointer-events:none;filter:drop-shadow(0 2px 6px rgba(0,0,0,.45));z-index:3}
     </style></head><body>
     <img id="ov" src="${art(`input-overlay/${mode}.png`)}" alt="">
     <img id="c" src="${art(mode === 'keyboard' ? 'cursor/text.png' : 'cursor/pointer.png')}" alt="">
