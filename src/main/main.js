@@ -3,7 +3,6 @@
 const { app, BrowserWindow, ipcMain, Menu, Tray, globalShortcut, desktopCapturer, screen } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
-const { pathToFileURL } = require('node:url');
 
 const settings = require('./settings');
 const ai = require('./ai');
@@ -818,7 +817,7 @@ app.whenReady().then(async () => {
   });
   toolbox.setTimerCancelHandler?.(() => {
     const n = activeTimers.size;
-    for (const [id, handle] of activeTimers) clearTimeout(handle);
+    for (const handle of activeTimers.values()) clearTimeout(handle);
     activeTimers.clear();
     return { text: n ? `${n} pending timer${n === 1 ? '' : 's'} cancelled.` : 'no pending timers to cancel.' };
   });

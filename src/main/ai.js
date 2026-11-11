@@ -189,7 +189,7 @@ async function runChat(messages, emit, system, opts = {}) {
     if (settings.provider === 'anthropic') {
       await streamAnthropic(settings, messages, push, controller.signal, systemPrompt, image);
     } else if (settings.provider === 'gemini') {
-      await streamGemini(settings, messages, push, controller.signal, systemPrompt, image);
+      await streamGemini(settings, messages, push, controller.signal, systemPrompt);
     } else {
       await streamOpenAI(settings, messages, push, controller.signal, systemPrompt, image);
     }
@@ -473,7 +473,7 @@ const REPLY_FORMAT = [
   '- mood: KANNA\'s feeling right now, one word: neutral, happy, sad, angry, shy, surprise, dizzy, strained, teasing, bored.',
   '- speed: 0.7 soft, 1 normal, 1.8 excited.',
   '- hold: true keeps the mood on your face until your next reply; false fades it to calm.',
-  '- text: your visible reply. Inside JSON: newlines are \\n, double quotes are \\\".',
+  '- text: your visible reply. Inside JSON: newlines are \\n, double quotes are \\".',
   'Example: {"mood":"happy","speed":1,"hold":false,"text":"Hi there!"}',
 ].join('\n');
 
@@ -652,7 +652,7 @@ async function getJson(url, headers, label) {
   try {
     res = await fetch(url, { headers });
   } catch (err) {
-    throw new Error(friendlyNetworkError(err, url));
+    throw new Error(friendlyNetworkError(err, url), { cause: err });
   }
   if (!res.ok) {
     const text = await res.text();
@@ -741,7 +741,7 @@ async function streamAnthropic(settings, messages, push, signal, systemPrompt, i
   });
 }
 
-async function streamGemini(settings, messages, push, signal, systemPrompt, image) {
+async function streamGemini(settings, messages, push, signal, systemPrompt) {
   if (!settings.gemini.apiKey) throw new Error('Gemini needs an API key — add one in Settings.');
   if (!settings.gemini.model) throw new Error('Gemini needs a model name — set one in Settings.');
 
@@ -782,7 +782,7 @@ async function post(url, headers, body, signal, label) {
     });
   } catch (err) {
     if (isAbort(err)) throw err;
-    throw new Error(friendlyNetworkError(err, url));
+    throw new Error(friendlyNetworkError(err, url), { cause: err });
   }
   if (!res.ok) {
     const text = await res.text();

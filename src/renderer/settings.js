@@ -14,6 +14,7 @@
     eye: $('#btn-eye'),
     baseUrlField: $('#field-baseurl'),
     baseUrl: $('#baseurl'),
+    tinyfishKey: $('#tinyfish-key'),
     model: $('#model'),
     persona: $('#persona'),
     ttsProvider: $('#tts-provider'),
@@ -247,7 +248,7 @@
   }
 
   async function loadMood() {
-    let s = null;
+    let s;
     try { s = await window.kanna.getMood(); } catch (err) { console.error('[mood panel]', err); return; }
     if (!s) return;
 
@@ -304,6 +305,7 @@
     els.model.value = typeof perProvider.model === 'string' ? perProvider.model : '';
     els.baseUrlField.hidden = p !== 'custom';
     if (p === 'custom') els.baseUrl.value = perProvider.baseUrl || '';
+    els.tinyfishKey.value = typeof draft.tinyfish?.apiKey === 'string' ? draft.tinyfish.apiKey : '';
     // Model suggestions came from the previously selected provider's listing —
     // they are stale now, so the datalist starts over.
     document.getElementById('model-list').replaceChildren();
@@ -413,6 +415,7 @@
       gemini: { apiKey: draft.gemini.apiKey, model: draft.gemini.model },
       custom: { apiKey: draft.custom.apiKey, model: draft.custom.model, baseUrl: draft.custom.baseUrl },
       opencode: { apiKey: draft.opencode.apiKey, model: draft.opencode.model },
+      tinyfish: { apiKey: draft.tinyfish?.apiKey || '' },
       tts: {
         provider: draft.tts?.provider || 'builtin',
         voice: draft.tts?.voice || '',
@@ -459,6 +462,11 @@
 
   els.baseUrl.addEventListener('input', () => {
     draft.custom.baseUrl = els.baseUrl.value;
+  });
+
+  els.tinyfishKey.addEventListener('input', () => {
+    if (!draft.tinyfish) draft.tinyfish = {};
+    draft.tinyfish.apiKey = els.tinyfishKey.value;
   });
 
   // --- TTS inputs -------------------------------------------------------------

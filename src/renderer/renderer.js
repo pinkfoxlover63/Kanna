@@ -238,7 +238,7 @@
 
   // Welcome-back variant: ask main for the tier-matched line first.
   async function sayWelcomeBack(awayMs) {
-    let g = null;
+    let g;
     try { g = await window.kanna.back(Math.round(awayMs)); } catch { return; }
     await playCanned(g);
   }
@@ -962,7 +962,7 @@ async function runShakeAI(shakes) {
   // says her line. Silent passes (or a vanished tool key) display
   // instantly and resume at once, so the chain never stalls on them.
   // background timer ringing: run a new Kanna turn with the pseudo user turn
-  window.kanna.onTimerRinging?.((info) => {
+  window.kanna.onTimerRinging?.(() => {
     if (busy) { pendingTimerRinging++; return; }
     send('*Kanna\'s timer ringing*');
   });
@@ -1213,15 +1213,6 @@ async function runShakeAI(shakes) {
   let sttPartial = '';
 
   const micBtn = document.getElementById('btn-mic');
-
-  function floatToPcm16(float32) {
-    const out = new Int16Array(float32.length);
-    for (let i = 0; i < float32.length; i++) {
-      const s = Math.max(-1, Math.min(1, float32[i]));
-      out[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
-    }
-    return out;
-  }
 
   async function startStt() {
     if (sttRecording) return;

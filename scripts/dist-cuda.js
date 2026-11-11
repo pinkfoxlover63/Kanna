@@ -32,7 +32,7 @@ fs.copyFileSync(slot, backup);
 fs.copyFileSync(cudaExe, slot);
 console.log('piper exe swapped to CUDA build — building installer...');
 
-let status = 1;
+let status;
 try {
   // Run electron-builder's cli.js directly with node: spawning `npx` depends
   // on a .cmd shim, and Node >=20 refuses to spawn .cmd files without

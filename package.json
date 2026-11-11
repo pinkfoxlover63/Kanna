@@ -9,6 +9,7 @@
   "main": "src/main/main.js",
   "scripts": {
     "start": "electron .",
+    "lint": "eslint .",
     "clean:dist": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true}); console.log('cleaned dist')\"",
     "dist": "electron-builder",
     "dist:all": "npm run clean:dist && npm run piper:build && npm run dist && npm run piper:build:cuda && npm run dist:cuda",
@@ -39,8 +40,11 @@
     }
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@fortawesome/fontawesome-free": "^7.3.1",
     "electron": "^45.2.1",
-    "electron-builder": "^26.18.0"
+    "electron-builder": "^26.18.0",
+    "eslint": "^10.14.0",
+    "globals": "^17.14.0"
   }
 }
