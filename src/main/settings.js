@@ -234,8 +234,9 @@ function merge(base, patch) {
       const merged = { ...base[key] };
       for (const subKey of Object.keys(value)) {
         if (subKey.endsWith('Key') || subKey === 'apiKey') {
-          // Never wipe a saved API key / credential with an empty string.
-          if (value[subKey] === '') continue;
+          // Never wipe a saved API key / credential with an empty string or
+          // a non-string value — a blank patch field means "leave alone".
+          if (typeof value[subKey] !== 'string' || value[subKey] === '') continue;
         }
         merged[subKey] = value[subKey];
       }

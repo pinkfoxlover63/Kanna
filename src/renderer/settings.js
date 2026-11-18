@@ -411,12 +411,16 @@
     // for unconfigured providers would otherwise wipe saved keys via merge.
     const providerPatch = {};
     for (const prov of ['openai', 'anthropic', 'gemini', 'custom', 'opencode']) {
-      const k = (draft[prov]?.apiKey || '').trim();
+      const block = draft[prov];
+      const rawKey = block && typeof block === 'object' ? block.apiKey : undefined;
+      const k = typeof rawKey === 'string' ? rawKey.trim() : '';
       if (!k) continue;
-      providerPatch[prov] = { apiKey: k, model: draft[prov]?.model || '' };
-      if (prov === 'custom') providerPatch[prov].baseUrl = draft[prov]?.baseUrl || '';
+      providerPatch[prov] = { apiKey: k, model: typeof block.model === 'string' ? block.model : '' };
+      if (prov === 'custom') providerPatch[prov].baseUrl = typeof block.baseUrl === 'string' ? block.baseUrl : '';
     }
-    const tfk = (draft.tinyfish?.apiKey || '').trim();
+    const tfBlock = draft.tinyfish;
+    const tfRaw = tfBlock && typeof tfBlock === 'object' ? tfBlock.apiKey : undefined;
+    const tfk = typeof tfRaw === 'string' ? tfRaw.trim() : '';
     if (tfk) providerPatch.tinyfish = { apiKey: tfk };
 
     const saved = await window.kanna.saveSettings({
