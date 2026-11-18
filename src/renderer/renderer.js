@@ -11,6 +11,9 @@
   const composerEl = $('#composer');
   const inputEl = $('#input');
   const sendBtn = $('#send');
+  const attachBtn = $('#btn-attach');
+  const attachInput = $('#attach-file');
+  const attachChipsEl = $('#attach-chips');
   const statusEl = $('#status');
   const toastEl = $('#toast');
   const stageEl = $('.stage');
@@ -67,6 +70,9 @@
   let text = '';              // accumulated reply text / her latest reply
   let lastUserMsg = '';       // your latest message (feeds the small top line)
   let composerOpen = true;    // composer row visible at the bottom of the box
+  // Attachments ride exactly one request (the user's own message). They are
+  // never stored in history/memory — cleared right after send.
+  let attachments = [];       // { kind:'image'|'text', name, dataUrl }
   let moodTimer = null;
   let toastTimer = null;
   let pinned = true;          // auto-scroll while the reader is at the bottom
@@ -762,10 +768,63 @@ async function runShakeAI(shakes) {
     inputEl.style.height = `${Math.min(inputEl.scrollHeight, 96)}px`;
   }
 
+  // --- attachments --------------------------------------------------
+  const MAX_FILE_BYTES = 25 * 1024 * 1024; // 25 MB per file
+
+  function readFileAsDataUrl(file) {
+    return new Promise((resolve, reject) => {
+      const fr = new FileReader();
+      fr.onload = () => resolve(fr.result);
+      fr.onerror = () => reject(fr.error);
+      fr.readAsDataURL(file);
+    });
+  }
+
+  function kindFor(file) {
+    return /^image\//.test(file.type || '') ? 'image' : 'text';
+  }
+
+  function escapeHtml(s) {
+    return String(s || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+
+  function renderChips() {
+    attachChipsEl.innerHTML = '';
+    for (const f of attachments) {
+      const chip = document.createElement('div');
+      chip.className = 'attach-chip';
+      chip.title = f.name;
+      chip.innerHTML = `<span class="attach-kind">${f.kind === 'image' ? 'image' : 'text'}</span> ${escapeHtml(f.name)} <span class="attach-remove">×</span>`;
+      chip.querySelector('.attach-remove').onclick = (e) => { e.stopPropagation(); removeAttachment(f.name); };
+      attachChipsEl.appendChild(chip);
+    }
+    attachChipsEl.style.display = attachments.length ? '' : 'none';
+  }
+
+  async function addAttachment(file) {
+    if (file.size > MAX_FILE_BYTES) { toast(`"${file.name}" is too large (max 25 MB)`); return; }
+    if (kindFor(file) === 'image' && attachments.filter((a) => a.kind === 'image').length >= 4) { toast('Max 4 images per message'); return; }
+    const dataUrl = await readFileAsDataUrl(file);
+    attachments = attachments.filter((a) => a.name !== file.name);
+    attachments.push({ kind: kindFor(file), name: file.name, dataUrl });
+    renderChips();
+  }
+
+  function removeAttachment(name) {
+    attachments = attachments.filter((a) => a.name !== name);
+    renderChips();
+  }
+
+  function clearAttachments() {
+    attachments = [];
+    renderChips();
+  }
+
   async function send(content) {
     const effectiveContent = (typeof content === 'string' ? content.trim() : (inputEl.value || '').trim());
     content = effectiveContent;
-    if (!content || busy) return;
+    if (!content && attachments.length === 0) return;
+    if (busy) return;
 
     if (!isConfigured(settings)) {
       toast('Set up a provider in Settings first');
@@ -797,7 +856,7 @@ async function runShakeAI(shakes) {
     turnEl.classList.remove('composing');
 
     lastUserMsg = content;
-    history.push({ role: 'user', content });
+    history.push({ role: 'user', content, files: attachments.map((a) => ({ kind: a.kind, name: a.name })) });
     renderMarkdownInto(priorEl, content);
 
     // Typing dots at the big spot until the first tokens arrive.
@@ -826,7 +885,9 @@ async function runShakeAI(shakes) {
     setThinking();
 
     try {
-      const result = await window.kanna.sendChat(history.slice(-24));
+      const files = [...attachments];
+      clearAttachments();
+      const result = await window.kanna.sendChat(history.slice(-24), files);
       if (chainPassesHandled > 0) {
         // Speech-sequenced chain resolved: every pass was already shown and
         // spoken through chat:passDone — skip the stock type/speech flow
@@ -1343,6 +1404,33 @@ async function runShakeAI(shakes) {
       else startStt();
     });
   }
+
+  // Attachments: click paperclip, pick files, paste images/files.
+  if (attachBtn) attachBtn.addEventListener('click', () => attachInput.click());
+  if (attachInput) {
+    attachInput.addEventListener('change', async (e) => {
+      for (const f of Array.from(e.target.files || [])) await addAttachment(f);
+      e.target.value = ''; // allow re-picking the same file later
+    });
+  }
+  window.addEventListener('paste', async (e) => {
+    const items = Array.from((e.clipboardData || {}).items || []);
+    const files = items
+      .filter((it) => it.kind === 'file')
+      .map((it) => it.getAsFile())
+      .filter(Boolean);
+    if (files.length) {
+      e.preventDefault();
+      for (const f of files) await addAttachment(f);
+    }
+  });
+  // Drag-over/drop onto the whole window: drop adds files, drag highlights.
+  window.addEventListener('dragover', (e) => e.preventDefault());
+  window.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    for (const f of Array.from(e.dataTransfer.files || [])) await addAttachment(f);
+  });
+
   // Esc cancels an in-flight recording without inserting text.
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && sttRecording) {

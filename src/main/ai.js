@@ -90,10 +90,12 @@ function lastUserText(messages) {
 
 async function runChat(messages, emit, system, opts = {}) {
   const { registerInActive = true, plain = false, noTriggers = false } = opts;
-  // One-shot image (Phase 5 read_screen): attached ONLY to the note-fed
-  // pass that answers it, never to storage. The adapters glue it to the
-  // last user message of that single call; later turns run imageless.
-  const image = opts.image || null;
+  // One-shot files: the read_screen screenshot (opts.image) and user
+  // attachments (opts.files) ride ONLY the request that needs them, never
+  // storage. The adapters glue them to the last user message of that call;
+  // later turns run imageless.
+  const files = Array.isArray(opts.files) ? [...opts.files] : [];
+  if (opts.image) files.push({ kind: 'image', name: 'screen', dataUrl: opts.image });
   const settings = await getSettings();
   const controller = new AbortController();
   if (registerInActive) active = { controller };
@@ -187,11 +189,11 @@ async function runChat(messages, emit, system, opts = {}) {
       : composeChatSystem(settings, affect.styleNote());
 
     if (settings.provider === 'anthropic') {
-      await streamAnthropic(settings, messages, push, controller.signal, systemPrompt, image);
+      await streamAnthropic(settings, messages, push, controller.signal, systemPrompt, files);
     } else if (settings.provider === 'gemini') {
-      await streamGemini(settings, messages, push, controller.signal, systemPrompt);
+      await streamGemini(settings, messages, push, controller.signal, systemPrompt, files);
     } else {
-      await streamOpenAI(settings, messages, push, controller.signal, systemPrompt, image);
+      await streamOpenAI(settings, messages, push, controller.signal, systemPrompt, files);
     }
     flush();
     affect.endTurn();
@@ -571,43 +573,93 @@ const OPENAI_COMPAT = {
   opencode: { label: 'OpenCode', defaultBase: 'https://opencode.ai/inference/openai/v1' },
 };
 
+// Providers whose adapters can carry images: the OpenAI chat-completions
+// dialect (openai/custom/opencode), Anthropic content blocks, Gemini parts.
+// Screen reading (read_screen) and user attachments both gate on this.
+const IMAGE_PROVIDERS = ['openai', 'custom', 'opencode', 'anthropic', 'gemini'];
+function supportsImages(provider) {
+  return IMAGE_PROVIDERS.includes(String(provider || ''));
+}
+
 // Splits a data URL into provider payloads: base64 body + mime type.
 function splitDataUrl(dataUrl) {
   const m = /^data:([^;]+);base64,(.+)$/.exec(String(dataUrl || ''));
   return m ? { mimeType: m[1], data: m[2] } : null;
 }
 
-// One-shot image handoff (Phase 5 read_screen): attach the data URL to the
-// LAST user message in provider-native shape — OpenAI content parts,
-// Anthropic content blocks, Gemini inlineData parts. A null/odd image
-// changes nothing. read_screen is hidden from custom/opencode, so their
-// OpenAI-dialect requests never carry an image in practice.
-function attachImage(normalized, image, shape) {
-  if (!image) return normalized;
-  const parsed = splitDataUrl(image);
-  if (!parsed || !parsed.mimeType.startsWith('image/')) return normalized;
+// Attachment caps — user files ride one request only and never touch disk.
+const MAX_ATTACH_IMAGES = 4;
+const MAX_ATTACH_TEXT = 40000;   // characters of inlined text per request
+
+// Decode a text attachment's data URL into a capped string.
+function attachmentText(file) {
+  const parsed = splitDataUrl(file.dataUrl);
+  if (!parsed) return '';
+  let t;
+  try {
+    t = Buffer.from(parsed.data, 'base64').toString('utf8');
+  } catch {
+    return '';
+  }
+  if (t.length > MAX_ATTACH_TEXT) t = `${t.slice(0, MAX_ATTACH_TEXT)}\n… (truncated)`;
+  return t;
+}
+
+// Split attachments into provider payloads: images as base64 blocks, text
+// files inlined as fenced blocks appended to the user text (chat-completions
+// has no generic file part, so text goes through the prompt).
+function filesForPrompt(files) {
+  const images = [];
+  const blocks = [];
+  let textLen = 0;
+  for (const f of files || []) {
+    if (f?.kind === 'image') {
+      const parsed = splitDataUrl(f.dataUrl);
+      if (!parsed || !parsed.mimeType.startsWith('image/')) continue;
+      if (images.length >= MAX_ATTACH_IMAGES) continue;
+      images.push({ mimeType: parsed.mimeType, data: parsed.data, name: f.name || 'image' });
+      continue;
+    }
+    if (f?.kind === 'text' && textLen < MAX_ATTACH_TEXT) {
+      const t = attachmentText(f);
+      if (!t) continue;
+      textLen += t.length;
+      blocks.push(`\n\n[Attached file: ${f.name || 'file'}]\n\`\`\`\n${t}\n\`\`\``);
+    }
+  }
+  return { images, text: blocks.join('') };
+}
+
+// Attach files to the LAST user message in provider-native shape: OpenAI
+// content parts, Anthropic content blocks, Gemini parts. `files` may mix
+// images and text; the screen screenshot arrives as one more image file.
+// An empty/odd list changes nothing.
+function attachFiles(normalized, files, shape) {
+  const { images, text: extra } = filesForPrompt(files);
+  if (!images.length && !extra) return normalized;
   const idx = normalized.map((m) => m.role).lastIndexOf('user');
   if (idx < 0) return normalized;
   const m = normalized[idx];
+  const baseText = `${m.content}${extra}`;
   if (shape === 'anthropic') {
     m.content = [
-      { type: 'image', source: { type: 'base64', media_type: parsed.mimeType, data: parsed.data } },
-      { type: 'text', text: m.content },
+      ...images.map((p) => ({ type: 'image', source: { type: 'base64', media_type: p.mimeType, data: p.data } })),
+      { type: 'text', text: baseText },
     ];
   } else if (shape === 'gemini') {
-    m.partsText = m.content;          // streamGemini consumes these extras
-    m.partsImage = { inlineData: { mimeType: parsed.mimeType, data: parsed.data } };
+    m.partsText = baseText;          // streamGemini consumes these extras
+    m.partsImages = images.map((p) => ({ inlineData: { mimeType: p.mimeType, data: p.data } }));
     m.content = '';
   } else {
     m.content = [
-      { type: 'text', text: m.content },
-      { type: 'image_url', image_url: { url: image } },
+      { type: 'text', text: baseText },
+      ...images.map((p) => ({ type: 'image_url', image_url: { url: `data:${p.mimeType};base64,${p.data}` } })),
     ];
   }
   return normalized;
 }
 
-async function streamOpenAI(settings, messages, push, signal, systemPrompt, image) {
+async function streamOpenAI(settings, messages, push, signal, systemPrompt, files) {
   const meta = OPENAI_COMPAT[settings.provider] || OPENAI_COMPAT.openai;
   const conf = settings[settings.provider] || settings.openai;
 
@@ -626,7 +678,7 @@ async function streamOpenAI(settings, messages, push, signal, systemPrompt, imag
     model: conf.model,
     // No max_tokens/temperature here: newer OpenAI models and many
     // OpenAI-compatible servers reject the legacy parameters.
-    messages: [{ role: 'system', content: systemPrompt }, ...attachImage(normalize(messages), image, 'openai')],
+    messages: [{ role: 'system', content: systemPrompt }, ...attachFiles(normalize(messages), files, 'openai')],
   }, signal, meta.label);
 
   const ct = res.headers.get('content-type') || '';
@@ -720,7 +772,7 @@ async function listModels(provider) {
   return { models: (j.data || []).map((m) => m.id).filter(Boolean) };
 }
 
-async function streamAnthropic(settings, messages, push, signal, systemPrompt, image) {
+async function streamAnthropic(settings, messages, push, signal, systemPrompt, files) {
   if (!settings.anthropic.apiKey) throw new Error('Anthropic needs an API key — add one in Settings.');
   if (!settings.anthropic.model) throw new Error('Anthropic needs a model name — set one in Settings.');
 
@@ -733,7 +785,7 @@ async function streamAnthropic(settings, messages, push, signal, systemPrompt, i
     temperature: 0.8,
     model: settings.anthropic.model,
     system: systemPrompt,
-    messages: attachImage(normalize(messages), image, 'anthropic'),
+    messages: attachFiles(normalize(messages), files, 'anthropic'),
   }, signal, 'Anthropic');
 
   await streamSSE(res, (data) => {
@@ -744,7 +796,7 @@ async function streamAnthropic(settings, messages, push, signal, systemPrompt, i
   });
 }
 
-async function streamGemini(settings, messages, push, signal, systemPrompt) {
+async function streamGemini(settings, messages, push, signal, systemPrompt, files) {
   if (!settings.gemini.apiKey) throw new Error('Gemini needs an API key — add one in Settings.');
   if (!settings.gemini.model) throw new Error('Gemini needs a model name — set one in Settings.');
 
@@ -752,11 +804,11 @@ async function streamGemini(settings, messages, push, signal, systemPrompt) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse`;
 
   const res = await post(url, { 'x-goog-api-key': settings.gemini.apiKey }, {
-    contents: normalize(messages).map((m) => {
+    contents: attachFiles(normalize(messages), files, 'gemini').map((m) => {
       const parts = [{ text: m.content }];
-      // attachImage marked the image-bearing user message (Phase 5).
+      // attachFiles marked the file-bearing user message.
       if (m.partsText) parts[0].text = m.partsText;
-      if (m.partsImage) parts.push(m.partsImage);
+      if (m.partsImages) parts.push(...m.partsImages);
       return { role: m.role === 'assistant' ? 'model' : 'user', parts };
     }),
     systemInstruction: { parts: [{ text: systemPrompt }] },
@@ -871,4 +923,4 @@ function normalize(messages) {
   return out;
 }
 
-module.exports = { runChat, listModels, abortActive, userRepeatCount, rapidUserStreak, composeChatSystem, normalize, createReplyReader };
+module.exports = { runChat, listModels, abortActive, userRepeatCount, rapidUserStreak, composeChatSystem, normalize, createReplyReader, supportsImages, IMAGE_PROVIDERS };

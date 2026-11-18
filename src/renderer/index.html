@@ -269,9 +269,12 @@
         <div id="turn-tap" class="turn-tap"></div>
         <form id="composer" class="composer">
           <button id="btn-mic" class="icon-btn mic-btn" type="button" aria-label="Speech to text" aria-pressed="false" title="Speech to text — click to talk, click again to insert, Esc cancels"><i class="fa-solid fa-microphone"></i></button>
+          <button id="btn-attach" class="icon-btn attach-btn" type="button" aria-label="Attach file" title="Attach images or text files"><i class="fa-solid fa-paperclip"></i></button>
+          <input id="attach-file" type="file" accept="image/*,.txt,.md,.json,.csv,.log" multiple hidden>
           <textarea id="input" rows="1" placeholder="Say something…"></textarea>
           <button id="send" type="submit" aria-label="Send" title="Send (Enter)"><i class="fa-solid fa-paper-plane"></i></button>
         </form>
+        <div id="attach-chips" class="attach-chips" role="region" aria-label="Attached files"></div>
       </div>
     </section>
   </div>

@@ -32,7 +32,8 @@
     ],
     "asarUnpack": [
       "resources/piper/**",
-      "resources/stt/**"
+      "resources/stt/**",
+      "node_modules/@nut-tree-fork/**"
     ],
     "win": {
       "target": "nsis",
@@ -46,5 +47,8 @@
     "electron-builder": "^26.18.0",
     "eslint": "^10.14.0",
     "globals": "^17.14.0"
+  },
+  "dependencies": {
+    "@nut-tree-fork/libnut-win32": "^2.7.5"
   }
 }

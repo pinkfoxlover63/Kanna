@@ -16,7 +16,7 @@ contextBridge.exposeInMainWorld('kanna', {
   getMood: () => ipcRenderer.invoke('affect:get'),
   resetMood: () => ipcRenderer.invoke('affect:reset'),
   resetAffinity: () => ipcRenderer.invoke('affect:resetAffinity'),
-  sendChat: (messages) => ipcRenderer.invoke('chat:send', messages),
+  sendChat: (messages, files = []) => ipcRenderer.invoke('chat:send', messages, files),
   stopChat: () => ipcRenderer.send('chat:stop'),
 
   // Shake flow: renderer passes its chat tail so the model reacts inside

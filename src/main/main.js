@@ -98,6 +98,37 @@ function largestDisplay() {
   return disp;
 }
 
+// Native capture/inject core: the nut-tree fork's N-API binding, prebuilt
+// per platform (no compiler, no PowerShell spawn). Loaded lazily so a
+// missing binary degrades instead of killing the app: capture falls back to
+// desktopCapturer, clicks fall back to the PowerShell helper.
+let nutCore;   // undefined = not tried yet, null = unavailable
+function nut() {
+  if (nutCore !== undefined) return nutCore;
+  try {
+    nutCore = require('@nut-tree-fork/libnut-win32');
+    log.info('[toolbox]', 'nut native core loaded');
+  } catch (err) {
+    nutCore = null;
+    log.info('[toolbox]', `nut native core unavailable: ${err?.message || err}`);
+  }
+  return nutCore;
+}
+
+// Physical (real-pixel) rect of a display. Electron speaks DIPs; the native
+// capture and injector speak physical pixels. The primary display's physical
+// origin is always (0,0).
+function physBounds(disp, bitmap) {
+  if (bitmap) return { x: 0, y: 0, width: bitmap.width, height: bitmap.height };
+  const s = disp.scaleFactor || 1;
+  return {
+    x: Math.round(disp.bounds.x * s),
+    y: Math.round(disp.bounds.y * s),
+    width: Math.round(disp.bounds.width * s),
+    height: Math.round(disp.bounds.height * s),
+  };
+}
+
 // Fullscreen transparent flash: visible proof the screen is being read.
 // Covers the largest display for ~1.3 s, never steals focus, ignores the
 // mouse, and destroys itself. Main-level so it shows even when her window
@@ -157,13 +188,41 @@ function flashScreenNotice() {
   }
 }
 
-// Real capture: desktopCapturer in main. Largest attached monitor at a
-// 2560-wide ceiling (native resolution up to that — 1:1 pixels make the
-// model's coordinates map exactly onto the screen), JPEG data URL — never
-// written to disk, one-shot.
+// Real capture: the native core grabs the primary display in true physical
+// pixels (no DPI virtualization) in ~35 ms — 2560-wide ceiling keeps vision
+// tokens sane. JPEG data URL — never written to disk, one-shot. Falls back to
+// desktopCapturer when the native module is missing or refuses.
 async function captureScreen() {
   try {
     flashScreenNotice();
+    const libnut = nut();
+    if (libnut) {
+      try {
+        const bmp = libnut.screen.capture();
+        if (bmp?.image && bmp.width && bmp.height) {
+          const { nativeImage } = require('electron');
+          let img = nativeImage.createFromBitmap(Buffer.from(bmp.image), { width: bmp.width, height: bmp.height });
+          let imgW = bmp.width, imgH = bmp.height;
+          if (imgW > 2560) {
+            imgH = Math.round(imgH * 2560 / imgW);
+            imgW = 2560;
+            img = img.resize({ width: imgW, height: imgH, quality: 'good' });
+          }
+          const jpeg = img.toJPEG(85);
+          if (jpeg?.length) {
+            log.info('[toolbox]', `screen captured native (${jpeg.length} bytes, ${imgW}x${imgH}, one-shot)`);
+            return {
+              dataUrl: `data:image/jpeg;base64,${jpeg.toString('base64')}`,
+              imgW, imgH,
+              bounds: physBounds(null, bmp),
+            };
+          }
+        }
+        log.info('[toolbox]', 'native capture returned no bitmap — falling back');
+      } catch (err) {
+        log.info('[toolbox]', `native capture failed: ${err?.message || err} — falling back`);
+      }
+    }
     const disp = largestDisplay();
     // Near-native size: cap at 2560 wide to keep vision tokens sane.
     const capW = Math.min(disp.bounds.width, 2560);
@@ -187,7 +246,7 @@ async function captureScreen() {
     return {
       dataUrl: `data:image/jpeg;base64,${jpeg.toString('base64')}`,
       imgW: size.width, imgH: size.height,
-      bounds: shotDisp.bounds,
+      bounds: physBounds(shotDisp),
     };
   } catch (err) {
     log.info('[toolbox]', `screen capture failed: ${err?.message || err}`);
@@ -212,10 +271,30 @@ function killInputOverlay() {
   inputOverlayWin = null;
 }
 
-// One PowerShell roundtrip: SetCursorPos + mouse_event. Compiled once per
-// spawn; ~300 ms total, fine for a click. Flags: LEFTDOWN 2 / LEFTUP 4 /
-// RIGHTDOWN 8 / RIGHTUP 16.
+// Land the input. Native path: the fork's N-API core moves the cursor and
+// clicks directly (no spawn, no console flash). Coordinates are physical
+// screen pixels. PowerShell (SetCursorPos + mouse_event) stays as a fallback
+// when the native module is unavailable.
 async function injectMouse({ x, y, click, button, double: dbl }) {
+  const libnut = nut();
+  if (libnut) {
+    try {
+      libnut.setMouseDelay(0);
+      libnut.moveMouse(Math.round(x), Math.round(y));
+      await new Promise((r) => setTimeout(r, 40));
+      if (click) {
+        const btn = button === 'right' ? 'right' : 'left';
+        libnut.mouseClick(btn, false);
+        if (dbl) {
+          await new Promise((r) => setTimeout(r, 120));
+          libnut.mouseClick(btn, false);
+        }
+      }
+      return true;
+    } catch (err) {
+      log.info('[toolbox]', `native inject failed: ${err?.message || err} — falling back to powershell`);
+    }
+  }
   const flags = [];
   if (click) {
     if (button === 'right') flags.push(8, 4);
@@ -308,9 +387,8 @@ function cropScreenImage({ dataUrl, x, y, w, h }) {
 
 // Overlay page: file-based like the flash (data: pages can't load images).
 // Params baked in at write time — no IPC roundtrip needed.
-function showInputOverlay({ mode, fromX, fromY, toX, toY, durMs }) {
+function showInputOverlay({ mode, disp, fromX, fromY, toX, toY, durMs }) {
   killInputOverlay();
-  const disp = largestDisplay();
   const art = (p) => {
     try {
       const { pathToFileURL } = require('node:url');
@@ -360,18 +438,21 @@ function showInputOverlay({ mode, fromX, fromY, toX, toY, durMs }) {
 
 // The toolbox hook. Flow: overlay cursor animates to the target (MOVE_MS),
 // holds DWELL_MS as the visible preview, then the real input lands. The
-// chat stop button or any failure aborts before the click.
+// chat stop button or any failure aborts before the click. Coordinates
+// arrive as physical screen pixels (what the native injector speaks); the
+// overlay window lives in DIPs, so convert at this boundary.
 async function runInputAction({ kind, x, y, button, double: dbl }) {
   inputAbort = false;
   try {
-    const disp = largestDisplay();
+    const disp = screen.getPrimaryDisplay();
+    const s = disp.scaleFactor || 1;
     const start = screen.getCursorScreenPoint();
-    // Overlay-relative coords (overlay covers only the largest display).
+    // Overlay-relative coords (overlay covers only the captured display).
     const fromX = Math.max(0, Math.min(disp.bounds.width - 1, start.x - disp.bounds.x));
     const fromY = Math.max(0, Math.min(disp.bounds.height - 1, start.y - disp.bounds.y));
-    const toX = Math.max(0, Math.min(disp.bounds.width - 1, x - disp.bounds.x));
-    const toY = Math.max(0, Math.min(disp.bounds.height - 1, y - disp.bounds.y));
-    showInputOverlay({ mode: 'mouse', fromX, fromY, toX, toY, durMs: MOVE_MS });
+    const toX = Math.max(0, Math.min(disp.bounds.width - 1, x / s - disp.bounds.x));
+    const toY = Math.max(0, Math.min(disp.bounds.height - 1, y / s - disp.bounds.y));
+    showInputOverlay({ mode: 'mouse', disp, fromX, fromY, toX, toY, durMs: MOVE_MS });
     await new Promise((r) => setTimeout(r, MOVE_MS + DWELL_MS));
     if (inputAbort) {
       killInputOverlay();
@@ -809,7 +890,7 @@ app.whenReady().then(async () => {
     return ai.runChat(messages, emit, undefined, { noTriggers: true });
   });
 
-  ipcMain.handle('chat:send', (event, messages) => {
+  ipcMain.handle('chat:send', (event, messages, files) => {
     const emit = (type, payload) => {
       try {
         if (!event.sender.isDestroyed()) event.sender.send(type, payload);
@@ -817,7 +898,7 @@ app.whenReady().then(async () => {
         // window gone mid-stream — nothing to do
       }
     };
-    return ai.runChat(messages, emit, undefined, { bufferToolText: true }).then(async (first) => {
+    return ai.runChat(messages, emit, undefined, { bufferToolText: true, files }).then(async (first) => {
       let stopped = first.stopped;
       // Safety scrub: if the model still leaks the note under user pressure
       // ("just TELL me"), the note lines never reach the bubble. Brackets
@@ -909,7 +990,10 @@ app.whenReady().then(async () => {
         // the image gate re-binds every real turn; the per-turn scope
         // (user text + tool count) is what licenses read_screen.
         toolbox.setSensitiveConfig({ screen: !!s.sensitive?.screen, input: !!s.sensitive?.input });
-        toolbox.setImageCapable(['openai', 'anthropic', 'gemini'].includes(s?.provider));
+        // Any OpenAI-dialect provider (openai/custom/opencode) plus
+        // Anthropic/Gemini can now take images — screen shots and user
+        // attachments both ride the chat-completions content-parts path.
+        toolbox.setImageCapable(ai.supportsImages(s?.provider));
         toolbox.setTurnContext({ userText: lastUserText(messages), ts: Date.now() });
         let pendingImage = null;   // one-shot screenshot held for the NEXT pass only
         chainStopFlag = false;
