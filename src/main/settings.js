@@ -223,14 +223,24 @@ async function persist() {
 
 // Shallow two-level merge: per-provider blocks merge key by key so a patch
 // like { openai: { apiKey: "..." } } doesn't wipe the saved model name.
+// Empty-string apiKey/credential fields never wipe a saved value — a blank
+// patch field means "leave it alone", not "clear it".
 function merge(base, patch) {
   const out = { ...base };
   for (const key of Object.keys(patch)) {
     const value = patch[key];
     if (value && typeof value === 'object' && !Array.isArray(value)
         && base[key] && typeof base[key] === 'object') {
-      out[key] = { ...base[key], ...value };
-    } else {
+      const merged = { ...base[key] };
+      for (const subKey of Object.keys(value)) {
+        if (subKey.endsWith('Key') || subKey === 'apiKey') {
+          // Never wipe a saved API key / credential with an empty string.
+          if (value[subKey] === '') continue;
+        }
+        merged[subKey] = value[subKey];
+      }
+      out[key] = merged;
+    } else if (value !== '') {
       out[key] = value;
     }
   }

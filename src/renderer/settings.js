@@ -407,17 +407,24 @@
     draft.agent = { enabled: !!els.agentEnabled.checked, silentTool: !!els.agentSilent.checked, maxChain: Math.max(1, Math.min(5, Number(els.agentMaxChain?.value) || 2)), disabledTools: collectDisabledTools() };
     draft.sensitive = { screen: !!els.sensitiveScreen?.checked, input: !!els.sensitiveInput?.checked };
 
+    // Only send provider blocks that actually carry a key. Empty strings
+    // for unconfigured providers would otherwise wipe saved keys via merge.
+    const providerPatch = {};
+    for (const prov of ['openai', 'anthropic', 'gemini', 'custom', 'opencode']) {
+      const k = (draft[prov]?.apiKey || '').trim();
+      if (!k) continue;
+      providerPatch[prov] = { apiKey: k, model: draft[prov]?.model || '' };
+      if (prov === 'custom') providerPatch[prov].baseUrl = draft[prov]?.baseUrl || '';
+    }
+    const tfk = (draft.tinyfish?.apiKey || '').trim();
+    if (tfk) providerPatch.tinyfish = { apiKey: tfk };
+
     const saved = await window.kanna.saveSettings({
       provider: p,
       persona: draft.persona,
       agent: draft.agent,
       sensitive: draft.sensitive,
-      openai: { apiKey: draft.openai.apiKey, model: draft.openai.model },
-      anthropic: { apiKey: draft.anthropic.apiKey, model: draft.anthropic.model },
-      gemini: { apiKey: draft.gemini.apiKey, model: draft.gemini.model },
-      custom: { apiKey: draft.custom.apiKey, model: draft.custom.model, baseUrl: draft.custom.baseUrl },
-      opencode: { apiKey: draft.opencode.apiKey, model: draft.opencode.model },
-      tinyfish: { apiKey: draft.tinyfish?.apiKey || '' },
+      ...providerPatch,
       tts: {
         provider: draft.tts?.provider || 'builtin',
         voice: draft.tts?.voice || '',
