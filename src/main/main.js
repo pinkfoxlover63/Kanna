@@ -789,11 +789,21 @@ app.whenReady().then(async () => {
     userData: (() => { try { return app.getPath('userData'); } catch { return ''; } })(),
     log: log.logFilePath(),
   });
-  ipcMain.handle('settings:get', () => settings.getSettings());
+  ipcMain.handle('settings:get', async () => {
+    const s = await settings.getSettings();
+    console.log('[main]', 'settings:get IPC returning: ' + JSON.stringify({
+      provider: s.provider,
+      geminiApiKeyType: typeof s.gemini?.apiKey,
+      geminiKeyPreview: typeof s.gemini?.apiKey === 'string' ? s.gemini.apiKey.slice(0, 20) : JSON.stringify(s.gemini?.apiKey).slice(0, 80),
+    }));
+    return s;
+  });
 
   ipcMain.handle('settings:save', async (_e, patch) => {
+    console.log('[main]', 'settings:save IPC patch geminiApiKeyType: ' + typeof patch?.gemini?.apiKey);
     const before = await settings.getSettings();
     const saved = await settings.save(patch);
+    console.log('[main]', 'settings:save IPC returning geminiApiKeyType: ' + typeof saved?.gemini?.apiKey);
     const wasPiper = before?.tts?.provider === 'piper';
     const isPiper = saved?.tts?.provider === 'piper';
     if (wasPiper || isPiper) {

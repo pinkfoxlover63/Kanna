@@ -81,17 +81,23 @@ function unwrapLegacyKeyWrappers(data) {
   for (const group of KEY_FIELDS) {
     const v = data[group]?.apiKey;
     if (v && typeof v === 'object' && typeof v.result === 'string') {
+      console.log('[settings]', `unwrap ${group}: object wrapper → string`);
       data[group].apiKey = v.result;
     } else if (v && typeof v === 'object') {
+      console.log('[settings]', `unwrap ${group}: object wrapper (no string result) → empty`);
       data[group].apiKey = '';
+    } else {
+      console.log('[settings]', `unwrap ${group}: ${typeof v} (${v ? 'present' : 'empty'})`);
     }
   }
   if (data.tts && typeof data.tts === 'object') {
     for (const field of TTS_KEY_FIELDS) {
       const v = data.tts[field];
       if (v && typeof v === 'object' && typeof v.result === 'string') {
+        console.log('[settings]', `unwrap tts.${field}: object wrapper → string`);
         data.tts[field] = v.result;
       } else if (v && typeof v === 'object') {
+        console.log('[settings]', `unwrap tts.${field}: object wrapper (no string result) → empty`);
         data.tts[field] = '';
       }
     }
@@ -195,6 +201,11 @@ async function getSettings() {
       if (n) console.log('[settings]', `encrypted ${n} API key(s) with your OS credentials`);
     }
   }
+  console.log('[settings]', 'getSettings returning: ' + JSON.stringify({
+    provider: cache.provider,
+    geminiApiKeyType: typeof cache.gemini?.apiKey,
+    geminiKeyPreview: typeof cache.gemini?.apiKey === 'string' ? cache.gemini.apiKey.slice(0, 20) : JSON.stringify(cache.gemini?.apiKey).slice(0, 80),
+  }));
   return cache;
 }
 
@@ -203,6 +214,11 @@ async function save(patch) {
   next.provider = PROVIDERS.includes(next.provider) ? next.provider : 'openai';
   cache = next;
   await persist();
+  console.log('[settings]', 'save returning: ' + JSON.stringify({
+    provider: next.provider,
+    geminiApiKeyType: typeof next.gemini?.apiKey,
+    geminiKeyPreview: typeof next.gemini?.apiKey === 'string' ? next.gemini.apiKey.slice(0, 20) : JSON.stringify(next.gemini?.apiKey).slice(0, 80),
+  }));
   return next;
 }
 
