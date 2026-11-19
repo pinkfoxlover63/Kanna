@@ -146,6 +146,7 @@ async function decrypt(blob) {
 }
 
 async function getSettings() {
+  console.log('[settings] DEBUG getSettings ENTRY');
   if (!cache) {
     let raw = {};
     try {
@@ -169,7 +170,7 @@ async function getSettings() {
         // encrypted blob on disk and in memory so it isn't destroyed.
         if (decrypted) {
           cache[group].apiKey = decrypted;
-          console.log('[settings]', `load ${group}: decrypted OK`);
+          console.log('[settings]', `load ${group}: decrypted OK, cache type now: ${typeof cache[group]?.apiKey}`);
         } else {
           console.log('[settings]', `load ${group}: decrypt FAILED, keeping encrypted blob`);
         }
