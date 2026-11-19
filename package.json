@@ -28,6 +28,7 @@
       "src/**/*",
       "assets/**/*",
       "resources/**/*",
+      "!resources/piper/kanna-piper-server-cuda.exe",
       "!resources/piper/output.wav"
     ],
     "asarUnpack": [
