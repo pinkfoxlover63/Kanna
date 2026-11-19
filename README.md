@@ -214,10 +214,10 @@ assets/        emote pairs + background art
 ## Build
 
 ```bash
-npm run dist
+npm run dist:all
 ```
 
-Produces `dist/Kanna Setup 0.1.5.exe` (NSIS installer) plus `dist/win-unpacked/`
+Produces `dist/Kanna Setup 0.1.5.exe` & `dist/Kanna Setup 0.1.5 cuda.exe`(NSIS installer) plus `dist/win-unpacked/`
 (the unpacked app, handy for a quick smoke test). The tray/window icon is
 `assets/icon.ico` (32×32); the installer icon is `assets/icon.png` (512×512,
 generated from the happy emote).
@@ -227,36 +227,4 @@ generated from the happy emote).
 - API/TTS keys are stored encrypted in `settings.json`; treat the file like a
   `.env`.
 
-## Releases / Changelog
-
-**v0.1.5** — since v0.1.4
-
-- **Native capture + input core (nut-tree fork)**: `read_screen` now grabs the
-  primary display via `@nut-tree-fork/libnut-win32` (~35 ms, true physical
-  pixels, no DPI virtualization) instead of `desktopCapturer` (~2 s). Clicks
-  land via native `moveMouse` + `mouseClick` — no PowerShell spawn, no console
-  flash. PowerShell helper kept as fallback. `native core loaded | unavailable`
-  logged at startup; missing binary degrades gracefully.
-- **Click precision**: `use_click` is now two-phase — first call `{x,y}` draws
-  a magenta crosshair on the retained screenshot for the model to verify
-  against the target; confirm with `{"confirm": true}` to land the click, or
-  correct `{x,y}` (max 3 corrections, then it clicks anyway). Marking needs no
-  consent; verify round-trips are free chain slots. After a real click lands,
-  a post-click screenshot is returned so the model can see a miss and realign
-  once (free correction slot).
-- **read_screen resolution**: tool result now states the actual screenshot
-  dimensions (`${imgW}×${imgH}`) so the model aims with exact pixel numbers
-  even if the provider compresses the image.
-- **Attach files**: composer paperclip button, drag/drop, and paste add image
-  and text attachments. Chips show what's riding the message; cleared after
-  send. `attachFiles` glues images as provider-native content parts
-  (OpenAI `image_url`, Anthropic blocks, Gemini `inlineData`) and text files
-  as fenced blocks — one request only, never stored. Caps: 4 images, 25 MB per
-  file, 40 k chars of inlined text.
-- **OpenAI-compatible image support**: Custom and OpenCode providers now accept
-  images (screen screenshots + user attachments), same as OpenAI/Anthropic/Gemini.
-- **API key persistence fixes**: renderer only sends provider blocks carrying a
-  real key on save; `merge()` never wipes a saved key with an empty string;
-  `persist()` preserves existing non-empty keys from the disk file;
-  `decrypt()` handles Electron builds where `safeStorage.decryptStringAsync`
-  returns `{ shouldReEncrypt, result }` instead of a plain string.
+## 
