@@ -231,6 +231,10 @@ Use `--no-piper-rebuild` to skip the Piper rebuilds and use the existing
 npm run dist:all --no-piper-rebuild
 ```
 
+Installer (NSIS): per-user install (no admin required), and the wizard shows
+a "Choose where to install" page so you can pick the installation directory.
+
+
 - Requests run in the main process (no CORS headaches), stream over IPC, and
   can be aborted.
 - API/TTS keys are stored encrypted in `settings.json`; treat the file like a
