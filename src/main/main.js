@@ -791,11 +791,6 @@ app.whenReady().then(async () => {
   });
   ipcMain.handle('settings:get', async () => {
     const s = await settings.getSettings();
-    console.log('[main]', 'settings:get IPC returning: ' + JSON.stringify({
-      provider: s.provider,
-      geminiApiKeyType: typeof s.gemini?.apiKey,
-      geminiKeyPreview: typeof s.gemini?.apiKey === 'string' ? s.gemini.apiKey.slice(0, 20) : JSON.stringify(s.gemini?.apiKey).slice(0, 80),
-    }));
     return s;
   });
 

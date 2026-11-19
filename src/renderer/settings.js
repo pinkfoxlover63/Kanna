@@ -112,12 +112,6 @@
 
   function open() {
     window.kanna.getSettings().then((saved) => {
-      console.log('[renderer] settings:get returned ' + JSON.stringify({
-        provider: saved.provider,
-        geminiApiKeyType: typeof saved.gemini?.apiKey,
-        geminiKey: saved.gemini?.apiKey ? (typeof saved.gemini.apiKey === 'string' && saved.gemini.apiKey.startsWith('enc:v1:') ? 'ENCRYPTED' : typeof saved.gemini.apiKey === 'string' ? 'PLAINTEXT(' + saved.gemini.apiKey.slice(0,8) + '...)' : JSON.stringify(saved.gemini.apiKey).slice(0,80)) : 'EMPTY',
-        geminiModel: saved.gemini?.model,
-      }));
       draft = structuredClone(saved);
       render();
       drawer.classList.add('open');
@@ -310,7 +304,6 @@
     els.model.placeholder = meta.modelPlaceholder;
     const keyVal = typeof perProvider.apiKey === 'string' ? perProvider.apiKey : '';
     els.key.value = keyVal;
-    console.log('[renderer] render key field ' + JSON.stringify({ provider: p, keyType: typeof perProvider.apiKey, keyValueLength: keyVal.length, keyIsEncrypted: keyVal.startsWith('enc:v1:') }));
     els.model.value = typeof perProvider.model === 'string' ? perProvider.model : '';
     els.baseUrlField.hidden = p !== 'custom';
     if (p === 'custom') els.baseUrl.value = perProvider.baseUrl || '';
@@ -431,12 +424,6 @@
     const tfk = typeof tfRaw === 'string' ? tfRaw.trim() : '';
     if (tfk) providerPatch.tinyfish = { apiKey: tfk };
 
-    console.log('[renderer] save sending patch ' + JSON.stringify({
-      provider: p,
-      providerPatch,
-      geminiKeyInPatch: providerPatch.gemini?.apiKey ? 'present' : 'absent',
-    }));
-
     const saved = await window.kanna.saveSettings({
       provider: p,
       persona: draft.persona,
@@ -461,10 +448,6 @@
         piperUseGpu: !!draft.tts?.piperUseGpu,
       },
     });
-    console.log('[renderer] save returned ' + JSON.stringify({
-      provider: saved.provider,
-      geminiKey: saved.gemini?.apiKey ? (typeof saved.gemini.apiKey === 'string' && saved.gemini.apiKey.startsWith('enc:v1:') ? 'ENCRYPTED' : typeof saved.gemini.apiKey === 'string' ? 'PLAINTEXT(' + saved.gemini.apiKey.slice(0,8) + '...)' : JSON.stringify(saved.gemini.apiKey).slice(0,80)) : 'EMPTY',
-    }));
 
     draft = structuredClone(saved);
     close();

@@ -81,23 +81,17 @@ function unwrapLegacyKeyWrappers(data) {
   for (const group of KEY_FIELDS) {
     const v = data[group]?.apiKey;
     if (v && typeof v === 'object' && typeof v.result === 'string') {
-      console.log('[settings]', `unwrap ${group}: object wrapper → string`);
       data[group].apiKey = v.result;
     } else if (v && typeof v === 'object') {
-      console.log('[settings]', `unwrap ${group}: object wrapper (no string result) → empty`);
       data[group].apiKey = '';
-    } else {
-      console.log('[settings]', `unwrap ${group}: ${typeof v} (${v ? 'present' : 'empty'})`);
     }
   }
   if (data.tts && typeof data.tts === 'object') {
     for (const field of TTS_KEY_FIELDS) {
       const v = data.tts[field];
       if (v && typeof v === 'object' && typeof v.result === 'string') {
-        console.log('[settings]', `unwrap tts.${field}: object wrapper → string`);
         data.tts[field] = v.result;
       } else if (v && typeof v === 'object') {
-        console.log('[settings]', `unwrap tts.${field}: object wrapper (no string result) → empty`);
         data.tts[field] = '';
       }
     }
@@ -139,8 +133,9 @@ async function decrypt(blob) {
     let result;
     if (safeStorage.decryptStringAsync) result = await safeStorage.decryptStringAsync(raw);
     else result = safeStorage.decryptString(raw);
-    console.log('[settings]', `decrypt raw type: ${typeof result}, preview: ${typeof result === 'string' ? result.slice(0, 20) : JSON.stringify(result).slice(0, 80)}`);
-    return result;
+    // safeStorage may return { shouldReEncrypt, result } instead of a plain
+    // string on some Electron builds — extract the result.
+    return typeof result === 'object' && result?.result ? result.result : result;
   } catch {
     // Encrypted by another OS account / unrecoverable — treat as unset.
     console.log('[settings]', 'an API key could not be decrypted — re-enter it in Settings.');
@@ -149,7 +144,6 @@ async function decrypt(blob) {
 }
 
 async function getSettings() {
-  console.log('[settings] DEBUG getSettings ENTRY');
   if (!cache) {
     let raw = {};
     try {
@@ -164,24 +158,13 @@ async function getSettings() {
     let plainOnDisk = false;
     for (const group of KEY_FIELDS) {
       const v = cache[group]?.apiKey;
-      console.log('[settings]', `load ${group}: onDisk=${v ? (isEncrypted(v) ? 'encrypted' : 'plaintext') : 'empty'}`);
       if (typeof v !== 'string' || !v) continue;
       if (isEncrypted(v)) {
         const decrypted = await decrypt(v);
         // Never overwrite a saved key with an empty string — if decryption
         // fails (OS credentials changed, DPAPI unavailable), keep the
         // encrypted blob on disk and in memory so it isn't destroyed.
-        if (decrypted) {
-          // decrypt() may return { shouldReEncrypt, result } instead of a
-          // plain string on some Electron builds — extract the result.
-          const key = typeof decrypted === 'object' && decrypted?.result
-            ? decrypted.result
-            : decrypted;
-          cache[group].apiKey = key;
-          console.log('[settings]', `load ${group}: decrypted OK, type: ${typeof key}`);
-        } else {
-          console.log('[settings]', `load ${group}: decrypt FAILED, keeping encrypted blob`);
-        }
+        if (decrypted) cache[group].apiKey = decrypted;
       } else {
         plainOnDisk = true;
       }
@@ -190,19 +173,10 @@ async function getSettings() {
     if (cache.tts && typeof cache.tts === 'object') {
       for (const field of TTS_KEY_FIELDS) {
         const v = cache.tts[field];
-        console.log('[settings]', `load tts.${field}: onDisk=${v ? (isEncrypted(v) ? 'encrypted' : 'plaintext') : 'empty'}`);
         if (typeof v !== 'string' || !v) continue;
         if (isEncrypted(v)) {
           const decrypted = await decrypt(v);
-          if (decrypted) {
-            const key = typeof decrypted === 'object' && decrypted?.result
-              ? decrypted.result
-              : decrypted;
-            cache.tts[field] = key;
-            console.log('[settings]', `load tts.${field}: decrypted OK, type: ${typeof key}`);
-          } else {
-            console.log('[settings]', `load tts.${field}: decrypt FAILED, keeping encrypted blob`);
-          }
+          if (decrypted) cache.tts[field] = decrypted;
         } else {
           plainOnDisk = true;
         }
@@ -213,11 +187,6 @@ async function getSettings() {
       if (n) console.log('[settings]', `encrypted ${n} API key(s) with your OS credentials`);
     }
   }
-  console.log('[settings]', 'getSettings returning: ' + JSON.stringify({
-    provider: cache.provider,
-    geminiApiKeyType: typeof cache.gemini?.apiKey,
-    geminiKeyPreview: typeof cache.gemini?.apiKey === 'string' ? cache.gemini.apiKey.slice(0, 20) : JSON.stringify(cache.gemini?.apiKey).slice(0, 80),
-  }));
   return cache;
 }
 
@@ -226,11 +195,6 @@ async function save(patch) {
   next.provider = PROVIDERS.includes(next.provider) ? next.provider : 'openai';
   cache = next;
   await persist();
-  console.log('[settings]', 'save returning: ' + JSON.stringify({
-    provider: next.provider,
-    geminiApiKeyType: typeof next.gemini?.apiKey,
-    geminiKeyPreview: typeof next.gemini?.apiKey === 'string' ? next.gemini.apiKey.slice(0, 20) : JSON.stringify(next.gemini?.apiKey).slice(0, 80),
-  }));
   return next;
 }
 
@@ -246,10 +210,7 @@ async function persist() {
       if (blob) {
         disk[group].apiKey = blob;
         encrypted++;
-        console.log('[settings]', `persist ${group}: encrypted plaintext key`);
       }
-    } else {
-      console.log('[settings]', `persist ${group}: onDisk=${v ? (isEncrypted(v) ? 'encrypted' : 'plaintext') : 'empty'}`);
     }
   }
   if (disk.tts && typeof disk.tts === 'object') {
@@ -260,10 +221,7 @@ async function persist() {
         if (blob) {
           disk.tts[field] = blob;
           encrypted++;
-          console.log('[settings]', `persist tts.${field}: encrypted plaintext key`);
         }
-      } else {
-        console.log('[settings]', `persist tts.${field}: onDisk=${v ? (isEncrypted(v) ? 'encrypted' : 'plaintext') : 'empty'}`);
       }
     }
   }
@@ -278,9 +236,6 @@ async function persist() {
       const prev = existing?.[group]?.apiKey;
       if ((typeof v !== 'string' || !v) && typeof prev === 'string' && prev) {
         disk[group].apiKey = prev;
-        console.log('[settings]', `persist ${group}: PRESERVED existing key (cache was empty)`);
-      } else if (typeof v !== 'string' || !v) {
-        console.log('[settings]', `persist ${group}: EMPTY key, no existing value to preserve`);
       }
     }
     if (disk.tts && typeof disk.tts === 'object' && existing.tts) {
@@ -328,4 +283,3 @@ function merge(base, patch) {
 }
 
 module.exports = { getSettings, save, DEFAULT_PERSONA, PROVIDERS };
-
