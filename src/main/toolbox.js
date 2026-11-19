@@ -362,7 +362,7 @@ function endTurnContext() {
 // may follow for fine aiming.
 function chainBlocked(name) {
   if (!sensitiveLock) return false;
-  const isInput = name === 'use_move' || name === 'use_click';
+  const isInput = name === 'use_move' || name === 'use_click' || name === 'use_type' || name === 'use_press';
   if (isInput) {
     // Straight after read_screen: one input tool may follow (consent-gated).
     // After a real click landed: ONE correction use_click may realign —
@@ -531,12 +531,30 @@ const SENSITIVE_TOOLS = [
     args: { type: 'object', properties: { x: { type: 'number' }, y: { type: 'number' }, button: { type: 'string' }, double: { type: 'boolean' }, confirm: { type: 'boolean' } }, required: [], additionalProperties: false },
     run: (args) => runUseInput({ kind: 'click', args }),
   },
+  {
+    name: 'use_type',
+    isSensitive: true,
+    isInput: true,
+    allowed: inputAllowed,
+    description: "type text at the current cursor position — args {\"text\": \"hello\"}; only when the user's latest message asks to type or write something; per-use consent (allow-once), one input action per turn, nothing is typed until the user confirms the dialog",
+    args: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'], additionalProperties: false },
+    run: (args) => runUseInput({ kind: 'type', args }),
+  },
+  {
+    name: 'use_press',
+    isSensitive: true,
+    isInput: true,
+    allowed: inputAllowed,
+    description: "press a keyboard key — args {\"key\": \"enter\"} (optional modifier: \"ctrl\", \"alt\", \"shift\", or array like [\"ctrl\",\"c\"] for shortcuts); only when the user's latest message asks to press a key or shortcut; per-use consent (allow-once), one input action per turn",
+    args: { type: 'object', properties: { key: { type: 'string' }, modifier: { type: ['string', 'array'] } }, required: ['key'], additionalProperties: false },
+    run: (args) => runUseInput({ kind: 'press', args }),
+  },
 ];
 
 // Shared gates + runner for the input tools. The cursor overlay IS the
 // preview the user watches; the consent dialog (allow-once only, never
 // session-sticky) is the plan's follow-up confirm after a read_screen.
-const INPUT_REQUEST_CUE = /\b(?:click|cursor|mouse|pointer|tap)\b/i;
+const INPUT_REQUEST_CUE = /\b(?:click|cursor|mouse|pointer|tap|type|write|keyboard|press|key|enter|tab|shortcut)\b/i;
 
 function shotPoint(toolName, args) {
   if (!lastShot) {
@@ -562,15 +580,39 @@ async function runUseInput({ kind, args }) {
     return { ok: false, text: 'ERROR no user turn is active — input tools only run inside a real user request.' };
   }
   if (Date.now() - turnCtx.ts > 120000) {
-    return { ok: false, text: 'ERROR the user message behind this turn is over 2 minutes old — never move or click unprompted; answer in text instead.' };
+    return { ok: false, text: 'ERROR the user message behind this turn is over 2 minutes old — never move, click, type, or press unprompted; answer in text instead.' };
   }
   if (!INPUT_REQUEST_CUE.test(turnCtx.userText)) {
-    return { ok: false, text: 'ERROR the user did not ask for a click or cursor move in their latest message — doing it now is forbidden; answer in text.' };
+    return { ok: false, text: 'ERROR the user did not ask for an input action (click, move, type, press) in their latest message — doing it now is forbidden; answer in text.' };
   }
   if (!consentHandler || !inputHandler) {
     return { ok: false, text: 'ERROR input automation is unavailable (main not wired).' };
   }
   if (kind === 'click') return runClickFlow(args);
+  // Keyboard tools need no screen coordinates — consent then inject directly.
+  if (kind === 'type' || kind === 'press') {
+    if (inputRanThisTurn) {
+      return { ok: false, text: 'ERROR one input action per turn — answer in text and let the user ask for more.' };
+    }
+    const detail = kind === 'type'
+      ? `type: "${String(args?.text || '').slice(0, 60)}"${String(args?.text || '').length > 60 ? '…' : ''}`
+      : `press key "${args?.key}"${args?.modifier ? ` with modifier ${JSON.stringify(args.modifier)}` : ''}`;
+    const grant = await consentHandler({ tool: kind, detail, noSession: true });
+    if (grant !== 'allow') {
+      return { ok: false, text: 'the user declined the input request — never retry it this turn; answer in plain text.' };
+    }
+    const res = await inputHandler({ kind, ...(kind === 'type' ? { text: args.text } : { key: args.key, modifier: args.modifier }) });
+    if (!res?.ok) {
+      return { ok: false, text: String(res?.text || 'the keyboard action failed') };
+    }
+    inputRanThisTurn = true;
+    return {
+      ok: true,
+      text: kind === 'type'
+        ? `done — typed the text at the cursor. Answer in text; ask the user before further input actions.`
+        : `done — pressed "${args.key}"${args.modifier ? ` with ${JSON.stringify(args.modifier)}` : ''}. Answer in text; ask the user before further input actions.`,
+    };
+  }
   // use_move: single shot — the cursor preview itself is the verification.
   const pt = shotPoint('use_move', args);
   if (pt.err) return { ok: false, text: pt.err };
@@ -720,9 +762,12 @@ async function execute(name, args) {
         log.info('[toolbox]', `sensitive call ${tool.name} blocked: one input action per turn`);
         return { ok: false, text: 'ERROR one input action per turn — answer in text and let the user ask for more.' };
       }
-      if (turnToolRuns > 0 && !readThisTurn) {
+      // Mouse tools need read_screen coordinates; keyboard tools only need
+      // the user's cue + consent — they can run as the first tool or after
+      // read_screen without requiring a screenshot first.
+      if (tool.name !== 'use_type' && tool.name !== 'use_press' && turnToolRuns > 0 && !readThisTurn) {
         log.info('[toolbox]', `sensitive call ${tool.name} blocked: not first tool and no read_screen this turn`);
-        return { ok: false, text: 'ERROR input tools may only run as the first tool or straight after read_screen in the same turn (they need its coordinates) — answer in text.' };
+        return { ok: false, text: 'ERROR input tools may only run as the first tool or straight after read_screen in the same turn — answer in text.' };
       }
     } else if (sensitiveLock || turnToolRuns > 0) {
       // The one re-open: a read_screen zoom call (region args) while the

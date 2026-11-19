@@ -317,6 +317,58 @@ async function injectMouse({ x, y, click, button, double: dbl }) {
   });
 }
 
+// Keyboard input: native keyTap / typeString via the nut-tree core,
+// PowerShell SendKeys as fallback. No cursor overlay — typing is invisible
+// until the text lands, which is the correct behavior.
+async function injectKeyboard({ kind, text, key, modifier }) {
+  const libnut = nut();
+  if (libnut) {
+    try {
+      if (kind === 'type') {
+        libnut.typeString(String(text));
+        return true;
+      }
+      if (kind === 'press') {
+        const mods = Array.isArray(modifier) ? modifier : (modifier ? [modifier] : []);
+        if (mods.length) {
+          // Hold modifiers, tap key, release modifiers.
+          for (const m of mods) libnut.keyToggle(m, 'down');
+          libnut.keyTap(String(key));
+          for (const m of mods) libnut.keyToggle(m, 'up');
+        } else {
+          libnut.keyTap(String(key));
+        }
+        return true;
+      }
+    } catch (err) {
+      log.info('[toolbox]', `native keyboard inject failed: ${err?.message || err} — falling back to powershell`);
+    }
+  }
+  // PowerShell SendKeys fallback.
+  let psKeys;
+  if (kind === 'type') {
+    const escaped = String(text).replace(/'/g, "''");
+    psKeys = `[System.Windows.Forms.SendKeys]::SendWait('${escaped}')`;
+  } else if (kind === 'press') {
+    const mods = Array.isArray(modifier) ? modifier : (modifier ? [modifier] : []);
+    const modMap = { ctrl: '^', alt: '%', shift: '+' };
+    const modChars = mods.map((m) => modMap[m] || m).join('');
+    psKeys = `[System.Windows.Forms.SendKeys]::SendWait('${modChars}{${String(key)}}')`;
+  } else {
+    return false;
+  }
+  const ps = `Add-Type -AssemblyName System.Windows.Forms; ${psKeys}`;
+  const { spawn } = require('node:child_process');
+  return new Promise((resolve) => {
+    const p = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], { windowsHide: true });
+    let done = false;
+    const finish = (ok) => { if (!done) { done = true; resolve(ok); } };
+    p.on('close', () => finish(true));
+    p.on('error', (err) => { log.info('[toolbox]', `keyboard inject failed: ${err?.message || err}`); finish(false); });
+    setTimeout(() => { try { p.kill(); } catch { /* gone */ } finish(false); }, 8000);
+  });
+}
+
 // Two-phase click (user design): mark the model's chosen point on the
 // retained screenshot so it can verify against the real target. Draws a
 // magenta crosshair with white halo + green center dot straight into the
@@ -441,9 +493,17 @@ function showInputOverlay({ mode, disp, fromX, fromY, toX, toY, durMs }) {
 // chat stop button or any failure aborts before the click. Coordinates
 // arrive as physical screen pixels (what the native injector speaks); the
 // overlay window lives in DIPs, so convert at this boundary.
-async function runInputAction({ kind, x, y, button, double: dbl }) {
+async function runInputAction({ kind, x, y, button, double: dbl, text, key, modifier }) {
   inputAbort = false;
   try {
+    // Keyboard tools: no cursor overlay — type/press directly, invisibly.
+    if (kind === 'type' || kind === 'press') {
+      const ok = await injectKeyboard({ kind, text, key, modifier });
+      await new Promise((r) => setTimeout(r, 250));
+      log.info('[toolbox]', `input ${kind}: ${ok ? 'done' : 'failed'}`);
+      if (!ok) return { ok: false, text: 'the keyboard injection failed (helper did not run)' };
+      return { ok: true, button: 'none', double: !!dbl };
+    }
     const disp = screen.getPrimaryDisplay();
     const s = disp.scaleFactor || 1;
     const start = screen.getCursorScreenPoint();
