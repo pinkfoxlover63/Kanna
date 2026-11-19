@@ -554,7 +554,7 @@ const SENSITIVE_TOOLS = [
 // Shared gates + runner for the input tools. The cursor overlay IS the
 // preview the user watches; the consent dialog (allow-once only, never
 // session-sticky) is the plan's follow-up confirm after a read_screen.
-const INPUT_REQUEST_CUE = /\b(?:click|cursor|mouse|pointer|tap|type|write|keyboard|press|key|enter|tab|shortcut)\b/i;
+const INPUT_REQUEST_CUE = /\b(?:click|tap|cursor|mouse|pointer|type|write|type in|fill in|keyboard|press|key|enter|tab|shortcut|open|launch|start|select|highlight|focus|navigate|go to|search|find|look for|scroll|drag|drop|hit|activate|choose|pick|mark|check|toggle|activate)\b/i;
 
 function shotPoint(toolName, args) {
   if (!lastShot) {
@@ -597,7 +597,7 @@ async function runUseInput({ kind, args }) {
     const detail = kind === 'type'
       ? `type: "${String(args?.text || '').slice(0, 60)}"${String(args?.text || '').length > 60 ? '…' : ''}`
       : `press key "${args?.key}"${args?.modifier ? ` with modifier ${JSON.stringify(args.modifier)}` : ''}`;
-    const grant = await consentHandler({ tool: kind, detail, noSession: true });
+    const grant = await consentHandler({ tool: kind, detail });
     if (grant !== 'allow') {
       return { ok: false, text: 'the user declined the input request — never retry it this turn; answer in plain text.' };
     }
@@ -616,9 +616,9 @@ async function runUseInput({ kind, args }) {
   // use_move: single shot — the cursor preview itself is the verification.
   const pt = shotPoint('use_move', args);
   if (pt.err) return { ok: false, text: pt.err };
-  // Per-use consent, allow-once only (no session-sticky input grants).
+  // Per-use consent, allow-once or allow-session (user can grant for the session).
   const zoomTag = zoomDoneThisTurn ? ' (in the zoomed area)' : '';
-  const grant = await consentHandler({ tool: 'use_move', detail: `move your cursor to (${pt.img.x}, ${pt.img.y})${zoomTag}`, noSession: true });
+  const grant = await consentHandler({ tool: 'use_move', detail: `move your cursor to (${pt.img.x}, ${pt.img.y})${zoomTag}` });
   if (grant !== 'allow') {
     return { ok: false, text: 'the user declined the input request — never retry it this turn; answer in plain text.' };
   }
@@ -689,7 +689,7 @@ async function executeClick(opts = {}) {
     y: b.y + Math.round(clickPoint.y * b.height / lastShot.imgH),
   };
   const zoomTag = zoomDoneThisTurn ? ' (in the zoomed area)' : '';
-  const grant = await consentHandler({ tool: 'use_click', detail: `move your cursor to (${clickPoint.x}, ${clickPoint.y})${zoomTag} and click`, noSession: true });
+  const grant = await consentHandler({ tool: 'use_click', detail: `move your cursor to (${clickPoint.x}, ${clickPoint.y})${zoomTag} and click` });
   if (grant !== 'allow') {
     verifyPending = false;
     return { ok: false, text: 'the user declined the input request — never retry it this turn; answer in plain text.' };
@@ -825,7 +825,7 @@ async function execute(name, args) {
       if (tool.name === 'read_screen') readThisTurn = true;
       // use_click's input flag is set only by the REAL click (executeClick) —
       // the marking/verify round-trips run no input at all.
-      if (tool.isInput && tool.name === 'use_move') inputRanThisTurn = true;
+      if (tool.isInput) inputRanThisTurn = true;
     }
     return { ok, applied: result?.applied, image: result?.image, text };
   } catch (err) {
