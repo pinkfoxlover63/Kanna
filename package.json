@@ -37,12 +37,12 @@
     ],
     "win": {
       "target": "nsis",
-      "icon": "assets/icon.png",
-      "nsis": {
-        "perMachine": false,
-        "allowToChangeInstallationDirectory": true,
-        "oneClick": false
-      }
+      "icon": "assets/icon.png"
+    },
+    "nsis": {
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "oneClick": false
     }
   },
   "devDependencies": {
