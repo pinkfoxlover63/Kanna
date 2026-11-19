@@ -37,6 +37,8 @@
     agentSilent: $('#agent-silent'),
     agentMaxChain: $('#agent-maxchain'),
     agentMaxChainVal: $('#agent-maxchain-val'),
+    agentFullAccess: $('#agent-full-access'),
+    fullAccessWarning: $('#agent-full-access-warning'),
     sensitiveScreen: $('#sensitive-screen'),
     sensitiveInput: $('#sensitive-input'),
     toolSwitches: $('#tool-switches'),
@@ -318,6 +320,12 @@
     // --- toolbox (agent mode) ---
     els.agentEnabled.checked = !!(draft.agent && draft.agent.enabled);
     els.agentSilent.checked = draft.agent?.silentTool !== false; // default on
+    if (els.agentFullAccess) {
+      els.agentFullAccess.checked = !!(draft.agent && draft.agent.fullAccess);
+      if (els.fullAccessWarning) {
+        els.fullAccessWarning.hidden = !(els.agentFullAccess.checked);
+      }
+    }
     if (els.agentMaxChain) {
       const v = Math.max(1, Math.min(5, Number(draft.agent?.maxChain) || 2));
       els.agentMaxChain.value = String(v);
@@ -405,7 +413,7 @@
     draft[p].model = els.model.value.trim();
     if (p === 'custom') draft[p].baseUrl = els.baseUrl.value.trim();
     draft.persona = els.persona.value.trim();
-    draft.agent = { enabled: !!els.agentEnabled.checked, silentTool: !!els.agentSilent.checked, maxChain: Math.max(1, Math.min(5, Number(els.agentMaxChain?.value) || 2)), disabledTools: collectDisabledTools() };
+    draft.agent = { enabled: !!els.agentEnabled.checked, silentTool: !!els.agentSilent.checked, maxChain: Math.max(1, Math.min(5, Number(els.agentMaxChain?.value) || 2)), disabledTools: collectDisabledTools(), fullAccess: !!els.agentFullAccess?.checked };
     draft.sensitive = { screen: !!els.sensitiveScreen?.checked, input: !!els.sensitiveInput?.checked };
 
     // Only send provider blocks that actually carry a key. Empty strings
@@ -523,6 +531,12 @@
   if (els.agentMaxChain) {
     els.agentMaxChain.addEventListener('input', () => {
       if (els.agentMaxChainVal) els.agentMaxChainVal.textContent = els.agentMaxChain.value;
+    });
+  }
+
+  if (els.agentFullAccess && els.fullAccessWarning) {
+    els.agentFullAccess.addEventListener('change', () => {
+      els.fullAccessWarning.hidden = !els.agentFullAccess.checked;
     });
   }
 

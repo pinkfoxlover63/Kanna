@@ -85,6 +85,13 @@
           <p class="hint">Lets her use real desktop tools when a question needs them — currently <code>time</code> (date/time), <code>weather</code> (wttr.in lookup), <code>web_search</code> (live web results; needs a TinyFish key in Brain), <code>remember</code> (self-write one durable memory fact), <code>background</code> (swap her room's wallpaper scene), and <code>hide</code> (she tucks her window away; you summon her back with Ctrl+Shift+K). She can chain up to Max chained tools per turn, one reply per tool. Best with capable models: small models often garble the tool-call JSON and fumble chains. Off by default: with agent mode off she never calls tools.</p>
         </label>
         <label class="field">
+          <span>Full access<input id="agent-full-access" type="checkbox"></span>
+          <p class="hint" id="agent-full-access-hint">DANGER: removes all sensitive-tier restrictions — she can move/click/type/press at will without per-action consent, no consent dialogs, no read_screen prerequisite, no tool switches. She can click anything on your desktop including send/delete/publish/buy controls. Only enable if you trust the model completely. Off by default.</p>
+        </label>
+        <label class="field" id="agent-full-access-warning" hidden>
+          <p class="hint" style="color: var(--accent)">⚠ Full access is ON — all safety gates are disabled. She will act on input requests without asking you first.</p>
+        </label>
+        <label class="field">
           <span>Silent chaining (skip voice mid-chain)<input id="agent-silent" type="checkbox"></span>
           <p class="hint">Agent mode only. She speaks each tool reply one by one; with this on the model may mark an intermediate reply silent so the next tool runs without waiting for her voice. The final reply always speaks. On by default.</p>
         </label>

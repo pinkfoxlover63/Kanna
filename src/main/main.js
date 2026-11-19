@@ -875,7 +875,7 @@ app.whenReady().then(async () => {
     // Phase 5: sensitive tier re-bind too (image first so the tier log line
     // reports the real state).
     toolbox.setImageCapable(['openai', 'anthropic', 'gemini'].includes(saved?.provider));
-    toolbox.setSensitiveConfig({ screen: !!saved?.sensitive?.screen, input: !!saved?.sensitive?.input });
+    toolbox.setSensitiveConfig({ screen: !!saved?.sensitive?.screen, input: !!saved?.sensitive?.input, fullAccess: !!saved?.agent?.fullAccess });
     return saved;
   });
   ipcMain.handle('models:list', (_e, provider) => ai.listModels(provider));
@@ -1054,7 +1054,7 @@ app.whenReady().then(async () => {
         // Phase 5 (sensitive tier): provider can change between saves, so
         // the image gate re-binds every real turn; the per-turn scope
         // (user text + tool count) is what licenses read_screen.
-        toolbox.setSensitiveConfig({ screen: !!s.sensitive?.screen, input: !!s.sensitive?.input });
+        toolbox.setSensitiveConfig({ screen: !!s.sensitive?.screen, input: !!s.sensitive?.input, fullAccess: !!s.agent?.fullAccess });
         // Any OpenAI-dialect provider (openai/custom/opencode) plus
         // Anthropic/Gemini can now take images — screen shots and user
         // attachments both ride the chat-completions content-parts path.
@@ -1213,7 +1213,7 @@ app.whenReady().then(async () => {
     // once (the consent wrapper re-reads settings so a provider switch
     // mid-session is reflected in the dialog).
     toolbox.setImageCapable(['openai', 'anthropic', 'gemini'].includes(initial?.provider));
-    toolbox.setSensitiveConfig({ screen: !!initial?.sensitive?.screen, input: !!initial?.sensitive?.input });
+    toolbox.setSensitiveConfig({ screen: !!initial?.sensitive?.screen, input: !!initial?.sensitive?.input, fullAccess: !!initial?.agent?.fullAccess });
     toolbox.setScreenCaptureHandler(() => captureScreen());
     toolbox.setScreenCropHandler(cropScreenImage);
     toolbox.setScreenMarkHandler(markScreenPoint);

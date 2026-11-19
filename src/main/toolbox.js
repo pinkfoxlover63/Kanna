@@ -271,12 +271,12 @@ let consentHandler = null;       // main hook: per-use consent dialog (session-o
 let inputHandler = null;         // main hook: cursor overlay + real mouse injection
 
 function setSensitiveConfig(cfg) {
-  const next = { screen: !!(cfg && cfg.screen), input: !!(cfg && cfg.input) };
-  const changed = next.screen !== sensitiveCfg.screen || next.input !== sensitiveCfg.input;
+  const next = { screen: !!(cfg && cfg.screen), input: !!(cfg && cfg.input), fullAccess: !!(cfg && cfg.fullAccess) };
+  const changed = next.screen !== sensitiveCfg.screen || next.input !== sensitiveCfg.input || next.fullAccess !== sensitiveCfg.fullAccess;
   sensitiveCfg = next;
   // Change-only logging: main re-binds this every turn — a per-turn log
   // line would drown the file.
-  if (changed) log.info('[toolbox]', `sensitive tier: screen=${sensitiveCfg.screen} images=${imageCapable} input=${sensitiveCfg.input}`);
+  if (changed) log.info('[toolbox]', `sensitive tier: screen=${sensitiveCfg.screen} images=${imageCapable} input=${sensitiveCfg.input} fullAccess=${sensitiveCfg.fullAccess}`);
 }
 function setImageCapable(can) {
   const next = !!can;
@@ -361,6 +361,8 @@ function endTurnContext() {
 // read_screen zoom call (a magnified crop of the already-consented capture)
 // may follow for fine aiming.
 function chainBlocked(name) {
+  // Full access bypasses all locks.
+  if (sensitiveCfg.fullAccess) return false;
   if (!sensitiveLock) return false;
   const isInput = name === 'use_move' || name === 'use_click' || name === 'use_type' || name === 'use_press';
   if (isInput) {
@@ -402,9 +404,13 @@ function isPartialZoom(args) {
 }
 
 function sensitiveAllowed() {
+  // Full access bypasses all sensitive-tier restrictions.
+  if (sensitiveCfg.fullAccess) return true;
   return sensitiveCfg.screen && imageCapable;
 }
 function inputAllowed() {
+  // Full access bypasses all sensitive-tier restrictions.
+  if (sensitiveCfg.fullAccess) return true;
   return !!sensitiveCfg.input;
 }
 
@@ -439,10 +445,14 @@ async function runReadScreen(args) {
   }
   // Per-use consent (main): overlay near her window, Allow once / session /
   // Never — session memory only, reset on restart. A decline is final for
-  // this run and the model must not retry.
-  const grant = await consentHandler({ tool: 'read_screen' });
-  if (grant !== 'allow') {
-    return { ok: false, text: 'the user declined the screen request — never retry it this turn; answer what you can in plain text.' };
+  // this run and the model must not retry. Full access skips consent.
+  if (sensitiveCfg.fullAccess) {
+    log.info('[toolbox]', 'consent read_screen: allow (full access)');
+  } else {
+    const grant = await consentHandler({ tool: 'read_screen' });
+    if (grant !== 'allow') {
+      return { ok: false, text: 'the user declined the screen request — never retry it this turn; answer what you can in plain text.' };
+    }
   }
   const shot = await screenCaptureHandler({});
   if (!shot?.dataUrl) {
@@ -582,7 +592,8 @@ async function runUseInput({ kind, args }) {
   if (Date.now() - turnCtx.ts > 120000) {
     return { ok: false, text: 'ERROR the user message behind this turn is over 2 minutes old — never move, click, type, or press unprompted; answer in text instead.' };
   }
-  if (!INPUT_REQUEST_CUE.test(turnCtx.userText)) {
+  // Full access bypasses the cue gate — she may act without an explicit keyword.
+  if (!sensitiveCfg.fullAccess && !INPUT_REQUEST_CUE.test(turnCtx.userText)) {
     return { ok: false, text: 'ERROR the user did not ask for an input action (click, move, type, press) in their latest message — doing it now is forbidden; answer in text.' };
   }
   if (!consentHandler || !inputHandler) {
@@ -597,9 +608,12 @@ async function runUseInput({ kind, args }) {
     const detail = kind === 'type'
       ? `type: "${String(args?.text || '').slice(0, 60)}"${String(args?.text || '').length > 60 ? '…' : ''}`
       : `press key "${args?.key}"${args?.modifier ? ` with modifier ${JSON.stringify(args.modifier)}` : ''}`;
-    const grant = await consentHandler({ tool: kind, detail });
-    if (grant !== 'allow') {
-      return { ok: false, text: 'the user declined the input request — never retry it this turn; answer in plain text.' };
+    // Full access skips the consent dialog.
+    if (!sensitiveCfg.fullAccess) {
+      const grant = await consentHandler({ tool: kind, detail });
+      if (grant !== 'allow') {
+        return { ok: false, text: 'the user declined the input request — never retry it this turn; answer in plain text.' };
+      }
     }
     const res = await inputHandler({ kind, ...(kind === 'type' ? { text: args.text } : { key: args.key, modifier: args.modifier }) });
     if (!res?.ok) {
@@ -618,9 +632,12 @@ async function runUseInput({ kind, args }) {
   if (pt.err) return { ok: false, text: pt.err };
   // Per-use consent, allow-once or allow-session (user can grant for the session).
   const zoomTag = zoomDoneThisTurn ? ' (in the zoomed area)' : '';
-  const grant = await consentHandler({ tool: 'use_move', detail: `move your cursor to (${pt.img.x}, ${pt.img.y})${zoomTag}` });
-  if (grant !== 'allow') {
-    return { ok: false, text: 'the user declined the input request — never retry it this turn; answer in plain text.' };
+  // Full access skips the consent dialog.
+  if (!sensitiveCfg.fullAccess) {
+    const grant = await consentHandler({ tool: 'use_move', detail: `move your cursor to (${pt.img.x}, ${pt.img.y})${zoomTag}` });
+    if (grant !== 'allow') {
+      return { ok: false, text: 'the user declined the input request — never retry it this turn; answer in plain text.' };
+    }
   }
   const res = await inputHandler({ kind, x: pt.x, y: pt.y, button: 'left', double: false });
   if (!res?.ok) {
@@ -679,6 +696,7 @@ async function runClickFlow(args) {
 }
 
 // The real click — consent (allow-once) then the visible cursor + inject.
+// Full access skips consent and injects directly.
 // After the click lands, capture a fresh screenshot so the model can see
 // where she hit. If she missed, ONE correction use_click may realign
 // (mark -> verify -> confirm) before the turn locks again.
@@ -689,10 +707,13 @@ async function executeClick(opts = {}) {
     y: b.y + Math.round(clickPoint.y * b.height / lastShot.imgH),
   };
   const zoomTag = zoomDoneThisTurn ? ' (in the zoomed area)' : '';
-  const grant = await consentHandler({ tool: 'use_click', detail: `move your cursor to (${clickPoint.x}, ${clickPoint.y})${zoomTag} and click` });
-  if (grant !== 'allow') {
-    verifyPending = false;
-    return { ok: false, text: 'the user declined the input request — never retry it this turn; answer in plain text.' };
+  // Full access skips consent.
+  if (!sensitiveCfg.fullAccess) {
+    const grant = await consentHandler({ tool: 'use_click', detail: `move your cursor to (${clickPoint.x}, ${clickPoint.y})${zoomTag} and click` });
+    if (grant !== 'allow') {
+      verifyPending = false;
+      return { ok: false, text: 'the user declined the input request — never retry it this turn; answer in plain text.' };
+    }
   }
   const res = await inputHandler({ kind: 'click', x: real.x, y: real.y, button: opts.button === 'right' ? 'right' : 'left', double: !!opts.double });
   if (!res?.ok) {
@@ -758,18 +779,22 @@ async function execute(name, args) {
         : 'ERROR the screen tool is not enabled for this setup (Settings → Tools, and an image provider) — answer in text without it.' };
     }
     if (tool.isInput) {
-      if (inputRanThisTurn) {
-        log.info('[toolbox]', `sensitive call ${tool.name} blocked: one input action per turn`);
-        return { ok: false, text: 'ERROR one input action per turn — answer in text and let the user ask for more.' };
+      // Full access bypasses the one-input-per-turn and read_screen
+      // prerequisite locks.
+      if (!sensitiveCfg.fullAccess) {
+        if (inputRanThisTurn) {
+          log.info('[toolbox]', `sensitive call ${tool.name} blocked: one input action per turn`);
+          return { ok: false, text: 'ERROR one input action per turn — answer in text and let the user ask for more.' };
+        }
+        // Mouse tools need read_screen coordinates; keyboard tools only need
+        // the user's cue + consent — they can run as the first tool or after
+        // read_screen without requiring a screenshot first.
+        if (tool.name !== 'use_type' && tool.name !== 'use_press' && turnToolRuns > 0 && !readThisTurn) {
+          log.info('[toolbox]', `sensitive call ${tool.name} blocked: not first tool and no read_screen this turn`);
+          return { ok: false, text: 'ERROR input tools may only run as the first tool or straight after read_screen in the same turn — answer in text.' };
+        }
       }
-      // Mouse tools need read_screen coordinates; keyboard tools only need
-      // the user's cue + consent — they can run as the first tool or after
-      // read_screen without requiring a screenshot first.
-      if (tool.name !== 'use_type' && tool.name !== 'use_press' && turnToolRuns > 0 && !readThisTurn) {
-        log.info('[toolbox]', `sensitive call ${tool.name} blocked: not first tool and no read_screen this turn`);
-        return { ok: false, text: 'ERROR input tools may only run as the first tool or straight after read_screen in the same turn — answer in text.' };
-      }
-    } else if (sensitiveLock || turnToolRuns > 0) {
+    } else if (!sensitiveCfg.fullAccess && (sensitiveLock || turnToolRuns > 0)) {
       // The one re-open: a read_screen zoom call (region args) while the
       // zoom follow-up is still open — it refines the already-consented
       // capture instead of chaining on it.
