@@ -15,7 +15,7 @@
     "dist:all": "node scripts/dist-all.js",
     "dist:cuda": "node scripts/dist-cuda.js",
     "piper:build": "py -3 -m PyInstaller --noconfirm --onefile --name kanna-piper-server --distpath resources/piper --workpath .opencode/piper-build --specpath .opencode/piper-build --hidden-import piper --hidden-import onnxruntime --collect-all piper resources/piper/piper_server.py",
-    "piper:build:cuda": ".opencode\\cuda-venv\\Scripts\\python.exe scripts\\piper_cuda_pyinstaller.py",
+    "piper:build:cuda": "py -3 scripts\\piper_cuda_pyinstaller.py",
     "stt:build": "py -3 -m PyInstaller --noconfirm --onefile --name kanna-stt-server --distpath resources/stt --workpath .opencode/stt-build --specpath .opencode/stt-build --collect-all vosk resources/stt/stt_server.py"
   },
   "build": {
