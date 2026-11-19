@@ -222,6 +222,14 @@ Produces `dist/Kanna Setup 0.1.5.exe` & `dist/Kanna Setup 0.1.5 cuda.exe`(NSIS i
 `assets/icon.ico` (32×32); the installer icon is `assets/icon.png` (512×512,
 generated from the happy emote).
 
+`dist:all` rebuilds the Piper TTS servers before each installer by default.
+Use `--no-piper-rebuild` to skip the Piper rebuilds and use the existing
+`resources/piper/kanna-piper-server.exe` (and CUDA binary) instead:
+
+```bash
+npm run dist:all --no-piper-rebuild
+```
+
 - Requests run in the main process (no CORS headaches), stream over IPC, and
   can be aborted.
 - API/TTS keys are stored encrypted in `settings.json`; treat the file like a

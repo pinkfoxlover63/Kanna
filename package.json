@@ -12,7 +12,7 @@
     "lint": "eslint .",
     "clean:dist": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true}); console.log('cleaned dist')\"",
     "dist": "electron-builder",
-    "dist:all": "npm run clean:dist && npm run piper:build && npm run dist && npm run piper:build:cuda && npm run dist:cuda",
+    "dist:all": "node scripts/dist-all.js",
     "dist:cuda": "node scripts/dist-cuda.js",
     "piper:build": "py -3 -m PyInstaller --noconfirm --onefile --name kanna-piper-server --distpath resources/piper --workpath .opencode/piper-build --specpath .opencode/piper-build --hidden-import piper --hidden-import onnxruntime --collect-all piper resources/piper/piper_server.py",
     "piper:build:cuda": ".opencode\\cuda-venv\\Scripts\\python.exe scripts\\piper_cuda_pyinstaller.py",
