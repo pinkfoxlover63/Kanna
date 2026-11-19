@@ -136,8 +136,11 @@ async function encrypt(plain) {
 async function decrypt(blob) {
   const raw = Buffer.from(blob.slice(MARKER.length), 'base64');
   try {
-    if (safeStorage.decryptStringAsync) return await safeStorage.decryptStringAsync(raw);
-    return safeStorage.decryptString(raw);
+    let result;
+    if (safeStorage.decryptStringAsync) result = await safeStorage.decryptStringAsync(raw);
+    else result = safeStorage.decryptString(raw);
+    console.log('[settings]', `decrypt raw type: ${typeof result}, preview: ${typeof result === 'string' ? result.slice(0, 20) : JSON.stringify(result).slice(0, 80)}`);
+    return result;
   } catch {
     // Encrypted by another OS account / unrecoverable — treat as unset.
     console.log('[settings]', 'an API key could not be decrypted — re-enter it in Settings.');
@@ -169,8 +172,13 @@ async function getSettings() {
         // fails (OS credentials changed, DPAPI unavailable), keep the
         // encrypted blob on disk and in memory so it isn't destroyed.
         if (decrypted) {
-          cache[group].apiKey = decrypted;
-          console.log('[settings]', `load ${group}: decrypted OK, cache type now: ${typeof cache[group]?.apiKey}`);
+          // decrypt() may return { shouldReEncrypt, result } instead of a
+          // plain string on some Electron builds — extract the result.
+          const key = typeof decrypted === 'object' && decrypted?.result
+            ? decrypted.result
+            : decrypted;
+          cache[group].apiKey = key;
+          console.log('[settings]', `load ${group}: decrypted OK, type: ${typeof key}`);
         } else {
           console.log('[settings]', `load ${group}: decrypt FAILED, keeping encrypted blob`);
         }
@@ -187,8 +195,11 @@ async function getSettings() {
         if (isEncrypted(v)) {
           const decrypted = await decrypt(v);
           if (decrypted) {
-            cache.tts[field] = decrypted;
-            console.log('[settings]', `load tts.${field}: decrypted OK`);
+            const key = typeof decrypted === 'object' && decrypted?.result
+              ? decrypted.result
+              : decrypted;
+            cache.tts[field] = key;
+            console.log('[settings]', `load tts.${field}: decrypted OK, type: ${typeof key}`);
           } else {
             console.log('[settings]', `load tts.${field}: decrypt FAILED, keeping encrypted blob`);
           }
