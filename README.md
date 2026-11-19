@@ -224,7 +224,8 @@ generated from the happy emote).
 
 `dist:all` rebuilds the Piper TTS servers before each installer by default.
 Use `--no-piper-rebuild` to skip the Piper rebuilds and use the existing
-`resources/piper/kanna-piper-server.exe` (and CUDA binary) instead:
+`resources/piper/kanna-piper-server.exe` (CPU) and
+`resources/piper/kanna-piper-server-cuda.exe` (CUDA) binaries instead:
 
 ```bash
 npm run dist:all --no-piper-rebuild

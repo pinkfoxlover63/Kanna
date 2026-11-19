@@ -5,7 +5,7 @@
  * Piper server exe sits in resources/piper/kanna-piper-server.exe when
  * electron-builder runs. This script:
  *   1. backs up the normal (CPU) exe,
- *   2. copies the CUDA build (.opencode/cuda/kanna-piper-server-cuda.exe,
+ *   2. copies the CUDA build (resources/piper/kanna-piper-server-cuda.exe,
  *      produced by `npm run piper:build:cuda`) into the slot,
  *   3. runs electron-builder with a -cuda artifact name,
  *   4. restores the normal exe no matter what (try/finally).
@@ -17,7 +17,7 @@ const { spawnSync } = require('node:child_process');
 const root = path.resolve(__dirname, '..');
 const slot = path.join(root, 'resources', 'piper', 'kanna-piper-server.exe');
 const backup = path.join(root, '.opencode', 'piper-server-normal.exe.bak');
-const cudaExe = path.join(root, '.opencode', 'cuda', 'kanna-piper-server-cuda.exe');
+const cudaExe = path.join(root, 'resources', 'piper', 'kanna-piper-server-cuda.exe');
 
 function die(msg) {
   console.error(msg);

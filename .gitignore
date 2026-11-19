@@ -4,6 +4,7 @@ dist/
 .commandcode/
 *.log
 resources/piper/kanna-piper-server.exe
+resources/piper/kanna-piper-server-cuda.exe
 resources/piper/*.onnx
 resources/piper/*.onnx.json
 resources/piper/output.wav

@@ -2,6 +2,7 @@
 
 Run: py -3 scripts\\piper_cuda_pyinstaller.py
 
+Outputs resources/piper/kanna-piper-server-cuda.exe alongside the CPU server.
 Collects piper + onnxruntime as usual, and additionally injects every NVIDIA
 CUDA/cuDNN wheel DLL (cudart, cublas, cuDNN...) found in the .opencode/cuda-venv
 site-packages into the bundle under its `nvidia/...` path. piper_server.py's
@@ -26,7 +27,7 @@ print(f"bundling {len(dlls)} NVIDIA DLLs", flush=True)
 cmd = [
     sys.executable, "-m", "PyInstaller", "--noconfirm", "--onefile",
     "--name", "kanna-piper-server-cuda",
-    "--distpath", os.path.join(root, ".opencode", "cuda"),
+    "--distpath", os.path.join(root, "resources", "piper"),
     "--workpath", os.path.join(root, ".opencode", "cuda-build"),
     "--specpath", os.path.join(root, ".opencode", "cuda-build"),
     "--collect-all", "piper",
