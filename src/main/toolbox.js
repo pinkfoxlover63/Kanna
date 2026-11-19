@@ -825,7 +825,7 @@ async function execute(name, args) {
       if (tool.name === 'read_screen') readThisTurn = true;
       // use_click's input flag is set only by the REAL click (executeClick) —
       // the marking/verify round-trips run no input at all.
-      if (tool.isInput) inputRanThisTurn = true;
+      if (tool.isInput && tool.name === 'use_move') inputRanThisTurn = true;
     }
     return { ok, applied: result?.applied, image: result?.image, text };
   } catch (err) {
