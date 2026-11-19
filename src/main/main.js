@@ -1262,3 +1262,5 @@ app.on('window-all-closed', () => {
 // so without this a crash is entirely silent for a user reporting an issue.
 process.on('uncaughtException', (err) => log.error('uncaughtException:', err));
 process.on('unhandledRejection', (reason) => log.error('unhandledRejection:', reason));
+
+// hi from Kanna! please be gentle with my memory files and feed the fox (snacks live in /assets) 
