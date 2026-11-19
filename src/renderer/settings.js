@@ -112,6 +112,11 @@
 
   function open() {
     window.kanna.getSettings().then((saved) => {
+      console.log('[renderer] settings:get returned:', {
+        provider: saved.provider,
+        geminiKey: saved.gemini?.apiKey ? (saved.gemini.apiKey.startsWith('enc:v1:') ? 'ENCRYPTED' : 'PLAINTEXT(' + saved.gemini.apiKey.slice(0,8) + '...)') : 'EMPTY',
+        geminiModel: saved.gemini?.model,
+      });
       draft = structuredClone(saved);
       render();
       drawer.classList.add('open');
@@ -303,6 +308,7 @@
     els.key.placeholder = meta.keyPlaceholder;
     els.model.placeholder = meta.modelPlaceholder;
     els.key.value = typeof perProvider.apiKey === 'string' ? perProvider.apiKey : '';
+    console.log('[renderer] render key field:', { provider: p, keyValueLength: els.key.value.length, keyIsEncrypted: els.key.value.startsWith('enc:v1:') });
     els.model.value = typeof perProvider.model === 'string' ? perProvider.model : '';
     els.baseUrlField.hidden = p !== 'custom';
     if (p === 'custom') els.baseUrl.value = perProvider.baseUrl || '';
@@ -423,6 +429,12 @@
     const tfk = typeof tfRaw === 'string' ? tfRaw.trim() : '';
     if (tfk) providerPatch.tinyfish = { apiKey: tfk };
 
+    console.log('[renderer] save sending patch:', {
+      provider: p,
+      providerPatch,
+      geminiKeyInPatch: providerPatch.gemini?.apiKey ? 'present' : 'absent',
+    });
+
     const saved = await window.kanna.saveSettings({
       provider: p,
       persona: draft.persona,
@@ -446,6 +458,10 @@
         piperDataDir: draft.tts?.piperDataDir || '',
         piperUseGpu: !!draft.tts?.piperUseGpu,
       },
+    });
+    console.log('[renderer] save returned:', {
+      provider: saved.provider,
+      geminiKey: saved.gemini?.apiKey ? (saved.gemini.apiKey.startsWith('enc:v1:') ? 'ENCRYPTED' : 'PLAINTEXT(' + saved.gemini.apiKey.slice(0,8) + '...)') : 'EMPTY',
     });
 
     draft = structuredClone(saved);
