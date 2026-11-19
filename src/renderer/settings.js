@@ -114,7 +114,8 @@
     window.kanna.getSettings().then((saved) => {
       console.log('[renderer] settings:get returned:', {
         provider: saved.provider,
-        geminiKey: saved.gemini?.apiKey ? (saved.gemini.apiKey.startsWith('enc:v1:') ? 'ENCRYPTED' : 'PLAINTEXT(' + saved.gemini.apiKey.slice(0,8) + '...)') : 'EMPTY',
+        geminiApiKeyType: typeof saved.gemini?.apiKey,
+        geminiKey: saved.gemini?.apiKey ? (typeof saved.gemini.apiKey === 'string' && saved.gemini.apiKey.startsWith('enc:v1:') ? 'ENCRYPTED' : typeof saved.gemini.apiKey === 'string' ? 'PLAINTEXT(' + saved.gemini.apiKey.slice(0,8) + '...)' : JSON.stringify(saved.gemini.apiKey).slice(0,80)) : 'EMPTY',
         geminiModel: saved.gemini?.model,
       });
       draft = structuredClone(saved);
@@ -307,8 +308,9 @@
     els.hint.textContent = meta.hint;
     els.key.placeholder = meta.keyPlaceholder;
     els.model.placeholder = meta.modelPlaceholder;
-    els.key.value = typeof perProvider.apiKey === 'string' ? perProvider.apiKey : '';
-    console.log('[renderer] render key field:', { provider: p, keyValueLength: els.key.value.length, keyIsEncrypted: els.key.value.startsWith('enc:v1:') });
+    const keyVal = typeof perProvider.apiKey === 'string' ? perProvider.apiKey : '';
+    els.key.value = keyVal;
+    console.log('[renderer] render key field:', { provider: p, keyType: typeof perProvider.apiKey, keyValueLength: keyVal.length, keyIsEncrypted: keyVal.startsWith('enc:v1:') });
     els.model.value = typeof perProvider.model === 'string' ? perProvider.model : '';
     els.baseUrlField.hidden = p !== 'custom';
     if (p === 'custom') els.baseUrl.value = perProvider.baseUrl || '';
