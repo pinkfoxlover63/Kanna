@@ -156,7 +156,11 @@ async function getSettings() {
       const v = cache[group]?.apiKey;
       if (typeof v !== 'string' || !v) continue;
       if (isEncrypted(v)) {
-        cache[group].apiKey = await decrypt(v);
+        const decrypted = await decrypt(v);
+        // Never overwrite a saved key with an empty string — if decryption
+        // fails (OS credentials changed, DPAPI unavailable), keep the
+        // encrypted blob on disk and in memory so it isn't destroyed.
+        if (decrypted) cache[group].apiKey = decrypted;
       } else {
         plainOnDisk = true;
       }
@@ -167,7 +171,8 @@ async function getSettings() {
         const v = cache.tts[field];
         if (typeof v !== 'string' || !v) continue;
         if (isEncrypted(v)) {
-          cache.tts[field] = await decrypt(v);
+          const decrypted = await decrypt(v);
+          if (decrypted) cache.tts[field] = decrypted;
         } else {
           plainOnDisk = true;
         }
@@ -215,6 +220,31 @@ async function persist() {
         }
       }
     }
+  }
+  // Defense in depth: never write an empty apiKey/*Key to disk if the
+  // existing file already has a non-empty value for it. This protects
+  // against a key being wiped when decrypt() fails at startup and cache
+  // holds an empty string.
+  try {
+    const existing = JSON.parse(fs.readFileSync(settingsFile(), 'utf8'));
+    for (const group of KEY_FIELDS) {
+      const v = disk[group]?.apiKey;
+      const prev = existing?.[group]?.apiKey;
+      if ((typeof v !== 'string' || !v) && typeof prev === 'string' && prev) {
+        disk[group].apiKey = prev;
+      }
+    }
+    if (disk.tts && typeof disk.tts === 'object' && existing.tts) {
+      for (const field of TTS_KEY_FIELDS) {
+        const v = disk.tts[field];
+        const prev = existing.tts[field];
+        if ((typeof v !== 'string' || !v) && typeof prev === 'string' && prev) {
+          disk.tts[field] = prev;
+        }
+      }
+    }
+  } catch {
+    // existing file unreadable — proceed with disk as-is
   }
   fs.mkdirSync(path.dirname(settingsFile()), { recursive: true });
   fs.writeFileSync(settingsFile(), JSON.stringify(disk, null, 2), 'utf8');
