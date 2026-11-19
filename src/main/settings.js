@@ -154,13 +154,19 @@ async function getSettings() {
     let plainOnDisk = false;
     for (const group of KEY_FIELDS) {
       const v = cache[group]?.apiKey;
+      console.log('[settings]', `load ${group}: onDisk=${v ? (isEncrypted(v) ? 'encrypted' : 'plaintext') : 'empty'}`);
       if (typeof v !== 'string' || !v) continue;
       if (isEncrypted(v)) {
         const decrypted = await decrypt(v);
         // Never overwrite a saved key with an empty string — if decryption
         // fails (OS credentials changed, DPAPI unavailable), keep the
         // encrypted blob on disk and in memory so it isn't destroyed.
-        if (decrypted) cache[group].apiKey = decrypted;
+        if (decrypted) {
+          cache[group].apiKey = decrypted;
+          console.log('[settings]', `load ${group}: decrypted OK`);
+        } else {
+          console.log('[settings]', `load ${group}: decrypt FAILED, keeping encrypted blob`);
+        }
       } else {
         plainOnDisk = true;
       }
@@ -169,10 +175,16 @@ async function getSettings() {
     if (cache.tts && typeof cache.tts === 'object') {
       for (const field of TTS_KEY_FIELDS) {
         const v = cache.tts[field];
+        console.log('[settings]', `load tts.${field}: onDisk=${v ? (isEncrypted(v) ? 'encrypted' : 'plaintext') : 'empty'}`);
         if (typeof v !== 'string' || !v) continue;
         if (isEncrypted(v)) {
           const decrypted = await decrypt(v);
-          if (decrypted) cache.tts[field] = decrypted;
+          if (decrypted) {
+            cache.tts[field] = decrypted;
+            console.log('[settings]', `load tts.${field}: decrypted OK`);
+          } else {
+            console.log('[settings]', `load tts.${field}: decrypt FAILED, keeping encrypted blob`);
+          }
         } else {
           plainOnDisk = true;
         }
@@ -206,7 +218,10 @@ async function persist() {
       if (blob) {
         disk[group].apiKey = blob;
         encrypted++;
+        console.log('[settings]', `persist ${group}: encrypted plaintext key`);
       }
+    } else {
+      console.log('[settings]', `persist ${group}: onDisk=${v ? (isEncrypted(v) ? 'encrypted' : 'plaintext') : 'empty'}`);
     }
   }
   if (disk.tts && typeof disk.tts === 'object') {
@@ -217,7 +232,10 @@ async function persist() {
         if (blob) {
           disk.tts[field] = blob;
           encrypted++;
+          console.log('[settings]', `persist tts.${field}: encrypted plaintext key`);
         }
+      } else {
+        console.log('[settings]', `persist tts.${field}: onDisk=${v ? (isEncrypted(v) ? 'encrypted' : 'plaintext') : 'empty'}`);
       }
     }
   }
@@ -232,6 +250,9 @@ async function persist() {
       const prev = existing?.[group]?.apiKey;
       if ((typeof v !== 'string' || !v) && typeof prev === 'string' && prev) {
         disk[group].apiKey = prev;
+        console.log('[settings]', `persist ${group}: PRESERVED existing key (cache was empty)`);
+      } else if (typeof v !== 'string' || !v) {
+        console.log('[settings]', `persist ${group}: EMPTY key, no existing value to preserve`);
       }
     }
     if (disk.tts && typeof disk.tts === 'object' && existing.tts) {
