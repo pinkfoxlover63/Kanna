@@ -329,6 +329,7 @@ let clickPoint = null;       // use_click two-phase: last accepted estimate {x,y
 let verifyPending = false;   // a marked screenshot is awaiting the model's confirm
 let verifyMarks = 0;         // marked screenshots returned this turn
 const VERIFY_CAP = 4;        // first mark + up to 3 corrections (user: max 3 retries)
+let clickCorrectionAllowed = false;   // after a real click, one more use_click may realign
 
 function setTurnContext(ctx = {}) {
   turnCtx = { userText: String(ctx.userText || ''), ts: Number(ctx.ts) || Date.now() };
@@ -344,6 +345,7 @@ function setTurnContext(ctx = {}) {
   clickPoint = null;
   verifyPending = false;
   verifyMarks = 0;
+  clickCorrectionAllowed = false;
 }
 function endTurnContext() {
   turnCtx = null;
@@ -351,6 +353,7 @@ function endTurnContext() {
   lastShotData = null;
   clickPoint = null;
   verifyPending = false;
+  clickCorrectionAllowed = false;
 }
 // True when no further tool may run this turn. The exceptions: straight
 // after read_screen, a single input tool (use_move/use_click) may follow —
@@ -360,7 +363,13 @@ function endTurnContext() {
 function chainBlocked(name) {
   if (!sensitiveLock) return false;
   const isInput = name === 'use_move' || name === 'use_click';
-  if (isInput) return !(readThisTurn && !inputRanThisTurn);
+  if (isInput) {
+    // Straight after read_screen: one input tool may follow (consent-gated).
+    // After a real click landed: ONE correction use_click may realign —
+    // the model saw she missed, she can mark -> verify -> confirm again.
+    if (clickCorrectionAllowed && name === 'use_click') return false;
+    return !(readThisTurn && !inputRanThisTurn);
+  }
   if (name === 'read_screen') return !zoomPossible();
   return true;
 }
@@ -378,8 +387,9 @@ function chainAnyNext() {
 // use_click calls inside the two-phase verify flow are FREE chain slots:
 // estimate, corrections, and the confirm are one logical click action, and
 // the flow is self-bounded by VERIFY_CAP (no runaway corrections).
+// After a real click landed, one more use_click is a free correction slot.
 function chainFreeCall(name) {
-  return name === 'use_click' && readThisTurn && !inputRanThisTurn;
+  return name === 'use_click' && readThisTurn && (!inputRanThisTurn || clickCorrectionAllowed);
 }
 // A read_screen call carries a complete zoom region (all four numbers)?
 function isZoomCall(args) {
@@ -593,13 +603,13 @@ async function runClickFlow(args) {
     if (!verifyPending || !clickPoint) {
       return { ok: false, text: 'ERROR nothing to confirm yet — first call use_click with {"x":…,"y":…} (no confirm key), verify the marked point in the next screenshot, THEN confirm.' };
     }
-    if (inputRanThisTurn) {
+    if (inputRanThisTurn && !clickCorrectionAllowed) {
       return { ok: false, text: 'ERROR one input action per turn — answer in text and let the user ask for more.' };
     }
     return executeClick({ double: !!args?.double, button: String(args?.button) === 'right' ? 'right' : 'left' });
   }
   // Estimate or correction: mark the point and hand the screenshot back.
-  if (inputRanThisTurn) {
+  if (inputRanThisTurn && !clickCorrectionAllowed) {
     return { ok: false, text: 'ERROR one input action per turn — answer in text and let the user ask for more.' };
   }
   if (!lastShot || !lastShotData) {
@@ -628,6 +638,9 @@ async function runClickFlow(args) {
 }
 
 // The real click — consent (allow-once) then the visible cursor + inject.
+// After the click lands, capture a fresh screenshot so the model can see
+// where she hit. If she missed, ONE correction use_click may realign
+// (mark -> verify -> confirm) before the turn locks again.
 async function executeClick(opts = {}) {
   const b = lastShot.bounds;
   const real = {
@@ -646,9 +659,29 @@ async function executeClick(opts = {}) {
   }
   inputRanThisTurn = true;
   verifyPending = false;
+
+  // First real click: allow one correction next. Correction click: no more.
+  if (clickCorrectionAllowed) {
+    clickCorrectionAllowed = false;
+  } else {
+    clickCorrectionAllowed = true;
+  }
+
+  // Fresh screenshot so the model can see the result and realign if needed.
+  let followImage = null;
+  if (screenCaptureHandler) {
+    try {
+      const shot = await screenCaptureHandler({});
+      if (shot?.dataUrl) followImage = shot.dataUrl;
+    } catch (err) {
+      log.info('[toolbox]', `post-click capture failed: ${err?.message || err}`);
+    }
+  }
+
   return {
     ok: true,
-    text: `done — the marker was confirmed and the click landed at (${clickPoint.x}, ${clickPoint.y}). Describe the result in text; no further tools this turn.`,
+    image: followImage,
+    text: `done — the marker was confirmed and the click landed at (${clickPoint.x}, ${clickPoint.y}). Describe the result in text; if you missed, carry use_click with corrected coords to realign (one correction only this turn).`,
   };
 }
 
