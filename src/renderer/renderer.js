@@ -271,6 +271,10 @@
     setEmote(liveMood, false);
     busy = true;
 
+    // Clear the stage and show typing dots so the reply appears fresh.
+    mainEl.classList.add('typing');
+    mainEl.replaceChildren(makeDots());
+
     // Voice first (same as send(): synthesize, then pace typing to it).
     let durMs = 0;
     const spoken = textForSpeech(g.text);
