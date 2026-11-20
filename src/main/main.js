@@ -508,10 +508,23 @@ function showInputOverlay({ mode, disp, fromX, fromY, toX, toY, durMs }) {
 async function runInputAction({ kind, x, y, button, double: dbl, text, key, modifier }) {
   inputAbort = false;
   try {
-    // Keyboard tools: no cursor overlay — type/press directly, invisibly.
+    // Keyboard tools: overlay shows the keyboard pictogram + text cursor
+    // while she types. The cursor stays at the current position.
     if (kind === 'type' || kind === 'press') {
+      const disp = screen.getPrimaryDisplay();
+      const start = screen.getCursorScreenPoint();
+      const fromX = Math.max(0, Math.min(disp.bounds.width - 1, start.x - disp.bounds.x));
+      const fromY = Math.max(0, Math.min(disp.bounds.height - 1, start.y - disp.bounds.y));
+      // Typing duration: ~83 ms per char at 120 WPM, min 500 ms.
+      const typeMs = kind === 'type' ? Math.max(500, String(text || '').length * 83) : 800;
+      showInputOverlay({ mode: 'keyboard', disp, fromX, fromY, toX: fromX, toY: fromY, durMs: typeMs });
       const ok = await injectKeyboard({ kind, text, key, modifier });
       await new Promise((r) => setTimeout(r, 250));
+      if (inputAbort) {
+        killInputOverlay();
+        return { ok: false, text: 'the user stopped the action — typing cancelled.' };
+      }
+      killInputOverlay();
       log.info('[toolbox]', `input ${kind}: ${ok ? 'done' : 'failed'}`);
       if (!ok) return { ok: false, text: 'the keyboard injection failed (helper did not run)' };
       return { ok: true, button: 'none', double: !!dbl };
