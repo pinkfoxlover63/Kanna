@@ -80,7 +80,7 @@ contextBridge.exposeInMainWorld('kanna', {
   ttsCancel: () => ipcRenderer.send('tts:cancel'),
 
   // Petting: drag on Kanna's head (stage head area) triggers a happy reaction.
-  pet: () => ipcRenderer.send('kanna:pet'),
+  pet: (hist) => ipcRenderer.send('kanna:pet', hist),
   onPet: (listener) => {
     ipcRenderer.on('kanna:petResponse', (_e, info) => listener(info));
   },

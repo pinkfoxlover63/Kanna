@@ -828,12 +828,34 @@ async function createWindow() {
   ipcMain.on('kanna:unfreeze', () => unfreezeForShake('voice done'));
 
   // Petting: drag on Kanna's head (top-middle of stage) triggers a happy
-  // reaction — her mood lifts toward happy and her face lights up briefly.
-  ipcMain.on('kanna:pet', () => {
+  // reaction — she gets a happy mood bump and answers with a canned line,
+  // just like shaking but without freezing.
+  ipcMain.on('kanna:pet', async (event, hist) => {
+    const prompt = [
+      '[Hidden scene note — the user cannot see, hear, or "send" this message]',
+      `The user just petted Kanna on the head — a gentle, affectionate drag across her head fur. Kanna is happy and pleased by the attention.`,
+      'This happens in the middle of the ongoing conversation above — read it first and stay continuous: pick up the latest topic, your earlier feeling about it, or earlier petting when it fits. It should read like the same Kanna from the chat, mid-thought, just now being petted.',
+      'Keep the reply very short (1–2 sentences, spoken-style). No markdown. Pick a happy mood yourself (happy, teasing, or shy if she is flustered).',
+    ].join('\n');
+    const emit = (type, payload) => {
+      try {
+        if (!event.sender.isDestroyed()) event.sender.send(type, payload);
+      } catch {
+        // window gone mid-stream — nothing to do
+      }
+    };
+    const messages = [
+      ...ai.normalize(hist),
+      { role: 'user', content: prompt },
+    ];
     try {
-      affect.observe({ mood: 'happy', speed: 1.1, hold: false }, 'pet');
-    } catch { /* affect engine not ready yet */ }
-    win.webContents.send('kanna:petResponse', { text: null });
+      const res = await ai.runChat(messages, emit, undefined, { noTriggers: true });
+      const g = res.text ? { mood: 'happy', speed: 1.1, hold: false, text: res.text } : null;
+      win.webContents.send('kanna:petResponse', g);
+    } catch (err) {
+      log.info('[toolbox]', `pet response failed: ${err?.message || err}`);
+      win.webContents.send('kanna:petResponse', { mood: 'happy', speed: 1.1, hold: false, text: null });
+    }
   });
 
   win.on('moved', () => {

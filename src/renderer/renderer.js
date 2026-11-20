@@ -228,14 +228,14 @@
     petStart = null;
     if (dx >= PET_MIN_DRAG || dy >= PET_MIN_DRAG) {
       // It's a pet: a deliberate drag on her head.
-      window.kanna.pet?.();
+      window.kanna.pet?.(history.slice(-24));
     }
   });
 
   window.kanna.onPet?.((info) => {
-    // Main told us she felt the pet. Flash her happy face briefly.
-    moodFlash('happy', false);
-    if (info?.text) toast(info.text);
+    // Main told us she felt the pet. Play a canned happy response, same as
+    // shake but without freezing.
+    playCanned(info);
   });
 
   // She speaks up on her own. Shared canned-speech path (no model): sets
