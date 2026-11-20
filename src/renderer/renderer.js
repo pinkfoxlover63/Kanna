@@ -295,6 +295,8 @@
     }
 
     pending = g.text;
+    // File the assistant reply into history so it persists in chat history.
+    history.push({ role: 'assistant', content: g.text });
     phase = 'speaking';
     finishing = true;
     if (!drainTimer) drainTimer = requestAnimationFrame(pace);
