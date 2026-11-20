@@ -235,6 +235,7 @@
   window.kanna.onPet?.((info) => {
     // Main told us she felt the pet. Play a canned happy response, same as
     // shake but without freezing.
+    console.log('[pet]', 'received response', JSON.stringify(info).slice(0, 120));
     playCanned(info);
   });
 

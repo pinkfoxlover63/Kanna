@@ -845,16 +845,17 @@ async function createWindow() {
       }
     };
     const messages = [
-      ...ai.normalize(hist),
+      ...ai.normalize(hist || []),
       { role: 'user', content: prompt },
     ];
     try {
       const res = await ai.runChat(messages, emit, undefined, { noTriggers: true });
-      const g = res.text ? { mood: 'happy', speed: 1.1, hold: false, text: res.text } : null;
-      win.webContents.send('kanna:petResponse', g);
+      const text = res.text && res.text.trim() ? res.text.trim() : "Mmm, that feels nice…";
+      win.webContents.send('kanna:petResponse', { mood: 'happy', speed: 1.1, hold: false, text });
+      log.info('[toolbox]', `pet response sent: ${String(text).slice(0, 80)}`);
     } catch (err) {
       log.info('[toolbox]', `pet response failed: ${err?.message || err}`);
-      win.webContents.send('kanna:petResponse', { mood: 'happy', speed: 1.1, hold: false, text: null });
+      win.webContents.send('kanna:petResponse', { mood: 'happy', speed: 1.1, hold: false, text: "Mmm, that feels nice…" });
     }
   });
 
