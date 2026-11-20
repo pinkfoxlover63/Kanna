@@ -235,7 +235,8 @@
   window.kanna.onPet?.((info) => {
     // Main told us she felt the pet. Play a canned happy response, same as
     // shake but without freezing — always shows in the turn box.
-    console.log('[pet]', 'received response', JSON.stringify(info).slice(0, 120));
+    // File the petting event as a user-side history note so it persists.
+    history.push({ role: 'user', content: '*Petting Kanna*' });
     playCanned(info, true);
   });
 
@@ -267,8 +268,6 @@
     liveHold = null;
     text = '';
     received = '';
-
-    console.log('[playCanned]', 'start', { mood, text: g.text?.slice(0, 60) });
 
     setEmote(liveMood, false);
     busy = true;
@@ -1290,7 +1289,6 @@ async function runShakeAI(shakes) {
         setEmote(liveMood, true);
       }
       text += slice;
-      console.log('[pace]', 'typing', { take, textLen: text.length, text: text.slice(0, 60) });
       renderMarkdownInto(mainEl, text);
       scrollToBottom();
       drainTimer = requestAnimationFrame(pace);
