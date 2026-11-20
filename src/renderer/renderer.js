@@ -245,9 +245,25 @@
   // then hands back to the mood flash. Used for welcome-back lines and for
   // shake reactions pushed by main.
   async function playCanned(g, forceFull = false) {
-    if (!g?.text || busy) {
-      console.log('[canned]', 'skip', (!g?.text ? 'no-line' : 'busy'), g?.mood || '');
+    if (!g?.text) {
+      console.log('[canned]', 'skip no-line', g?.mood || '');
       return;
+    }
+    // Cancel any in-progress reply so a new pet (or welcome-back) can take
+    // over immediately instead of being dropped.
+    if (busy) {
+      cancelSpeech();
+      clearTimeout(drainTimer);
+      drainTimer = null;
+      pending = '';
+      text = '';
+      received = '';
+      busy = false;
+      phase = 'idle';
+      finishing = false;
+      mainEl.replaceChildren(makeDots());
+      setEmote('neutral', false);
+      console.log('[canned]', 'cancelled in-progress reply for new pet');
     }
     const mood = MOOD_ALIASES[g.mood] || (EMOTES.includes(g.mood) ? g.mood : 'neutral');
     // Composer is open (fresh session / user typing view): the stage shows
