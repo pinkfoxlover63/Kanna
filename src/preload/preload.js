@@ -79,6 +79,12 @@ contextBridge.exposeInMainWorld('kanna', {
   ttsSpeak: (payload) => ipcRenderer.invoke('tts:speak', payload),
   ttsCancel: () => ipcRenderer.send('tts:cancel'),
 
+  // Petting: drag on Kanna's head (stage head area) triggers a happy reaction.
+  pet: () => ipcRenderer.send('kanna:pet'),
+  onPet: (listener) => {
+    ipcRenderer.on('kanna:petResponse', (_e, info) => listener(info));
+  },
+
   // STT: microphone transcription through the local Vosk server.
   sttStart: () => ipcRenderer.invoke('stt:start'),
   sttAudio: (pcmBuffer) => ipcRenderer.invoke('stt:audio', pcmBuffer),

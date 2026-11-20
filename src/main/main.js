@@ -827,6 +827,15 @@ async function createWindow() {
 
   ipcMain.on('kanna:unfreeze', () => unfreezeForShake('voice done'));
 
+  // Petting: drag on Kanna's head (top-middle of stage) triggers a happy
+  // reaction — her mood lifts toward happy and her face lights up briefly.
+  ipcMain.on('kanna:pet', () => {
+    try {
+      affect.observe({ mood: 'happy', speed: 1.1, hold: false }, 'pet');
+    } catch { /* affect engine not ready yet */ }
+    win.webContents.send('kanna:petResponse', { text: null });
+  });
+
   win.on('moved', () => {
     clearTimeout(moveTimer);
     moveTimer = setTimeout(savePosition, 500);

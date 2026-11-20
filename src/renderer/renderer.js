@@ -187,6 +187,57 @@
   }
   window.addEventListener('focus', wake);
 
+  // --- petting: drag on Kanna's head (middle-top of the stage) -------------
+  // Dragging within the head region (top-middle of the stage) triggers a
+  // happy reaction: she gets a happy mood bump and her face lights up.
+  // The stage is frameless so dragging also moves the window — that's fine,
+  // the petting gesture is still detected and answered.
+  let petStart = null;   // { x, y, t } when pointerdown lands in head region
+  const PET_MIN_DRAG = 8;   // px — minimum drag to count as a pet (not a tap)
+  const PET_MAX_DRAG = 120; // px — beyond this it's probably a window move
+
+  function inHeadRegion(x, y) {
+    const r = stageEl.getBoundingClientRect();
+    // Head region: middle 50% width, top 50% height of the stage.
+    const mx = x - r.left;
+    const my = y - r.top;
+    return mx >= r.width * 0.20 && mx <= r.width * 0.80
+      && my >= 0 && my <= r.height * 0.55;
+  }
+
+  stageEl.addEventListener('pointerdown', (ev) => {
+    if (ev.button !== 0) return;
+    if (inHeadRegion(ev.clientX, ev.clientY)) {
+      petStart = { x: ev.clientX, y: ev.clientY };
+    }
+  });
+
+  window.addEventListener('pointermove', (ev) => {
+    if (!petStart) return;
+    const dx = Math.abs(ev.clientX - petStart.x);
+    const dy = Math.abs(ev.clientY - petStart.y);
+    if (dx > PET_MAX_DRAG || dy > PET_MAX_DRAG) {
+      petStart = null; // too far — it's a window move, not a pet
+    }
+  });
+
+  stageEl.addEventListener('pointerup', (ev) => {
+    if (!petStart) return;
+    const dx = Math.abs(ev.clientX - petStart.x);
+    const dy = Math.abs(ev.clientY - petStart.y);
+    petStart = null;
+    if (dx >= PET_MIN_DRAG || dy >= PET_MIN_DRAG) {
+      // It's a pet: a deliberate drag on her head.
+      window.kanna.pet?.();
+    }
+  });
+
+  window.kanna.onPet?.((info) => {
+    // Main told us she felt the pet. Flash her happy face briefly.
+    moodFlash('happy', false);
+    if (info?.text) toast(info.text);
+  });
+
   // She speaks up on her own. Shared canned-speech path (no model): sets
   // the mood face, synthesizes TTS, paces typing to it like a normal reply,
   // then hands back to the mood flash. Used for welcome-back lines and for
