@@ -234,16 +234,16 @@
 
   window.kanna.onPet?.((info) => {
     // Main told us she felt the pet. Play a canned happy response, same as
-    // shake but without freezing.
+    // shake but without freezing — always shows in the turn box.
     console.log('[pet]', 'received response', JSON.stringify(info).slice(0, 120));
-    playCanned(info);
+    playCanned(info, true);
   });
 
   // She speaks up on her own. Shared canned-speech path (no model): sets
   // the mood face, synthesizes TTS, paces typing to it like a normal reply,
   // then hands back to the mood flash. Used for welcome-back lines and for
   // shake reactions pushed by main.
-  async function playCanned(g) {
+  async function playCanned(g, forceFull = false) {
     if (!g?.text || busy) {
       console.log('[canned]', 'skip', (!g?.text ? 'no-line' : 'busy'), g?.mood || '');
       return;
@@ -251,7 +251,7 @@
     const mood = MOOD_ALIASES[g.mood] || (EMOTES.includes(g.mood) ? g.mood : 'neutral');
     // Composer is open (fresh session / user typing view): the stage shows
     // their message, so react as toast + face only instead of a takeover.
-    if (composerOpen) {
+    if (!forceFull && composerOpen) {
       console.log('[canned]', 'composer open → toast+face', mood);
       moodFlash(mood, false);
       toast(g.text);
