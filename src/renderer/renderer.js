@@ -268,6 +268,8 @@
     text = '';
     received = '';
 
+    console.log('[playCanned]', 'start', { mood, text: g.text?.slice(0, 60) });
+
     setEmote(liveMood, false);
     busy = true;
 
@@ -1286,6 +1288,7 @@ async function runShakeAI(shakes) {
         setEmote(liveMood, true);
       }
       text += slice;
+      console.log('[pace]', 'typing', { take, textLen: text.length, text: text.slice(0, 60) });
       renderMarkdownInto(mainEl, text);
       scrollToBottom();
       drainTimer = requestAnimationFrame(pace);
