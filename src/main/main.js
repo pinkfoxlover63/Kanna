@@ -466,7 +466,7 @@ function showInputOverlay({ mode, disp, fromX, fromY, toX, toY, durMs }) {
     width: disp.bounds.width, height: disp.bounds.height,
     frame: false, transparent: true, resizable: false,
     movable: false, minimizable: false, maximizable: false,
-    skipTaskbar: true, show: false,
+    skipTaskbar: true, focusable: false, show: true,
   });
   const ov = inputOverlayWin;
   ov.setAlwaysOnTop(true, 'screen-saver');
@@ -498,8 +498,11 @@ function showInputOverlay({ mode, disp, fromX, fromY, toX, toY, durMs }) {
   return new Promise((resolve) => {
     ov.loadFile(overlayFile)
       .then(() => {
-        if (inputOverlayWin && !inputOverlayWin.isDestroyed()) inputOverlayWin.showInactive();
-        resolve(ov);
+        // Ensure the window is visible and painted.
+        if (inputOverlayWin && !inputOverlayWin.isDestroyed()) {
+          inputOverlayWin.show();
+        }
+        setTimeout(() => resolve(ov), 150);
       })
       .catch((err) => {
         log.info('[toolbox]', `input overlay load failed: ${err?.message || err}`);
