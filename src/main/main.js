@@ -317,15 +317,16 @@ async function injectMouse({ x, y, click, button, double: dbl }) {
   });
 }
 
-// Keyboard input: native keyTap / typeString via the nut-tree core,
+// Keyboard input: native keyTap / typeStringDelayed via the nut-tree core,
 // PowerShell SendKeys as fallback. No cursor overlay — typing is invisible
 // until the text lands, which is the correct behavior.
+// ~120 WPM = ~720 CPM (characters per minute).
 async function injectKeyboard({ kind, text, key, modifier }) {
   const libnut = nut();
   if (libnut) {
     try {
       if (kind === 'type') {
-        libnut.typeString(String(text));
+        libnut.typeStringDelayed(String(text), 720);
         return true;
       }
       if (kind === 'press') {
@@ -344,29 +345,40 @@ async function injectKeyboard({ kind, text, key, modifier }) {
       log.info('[toolbox]', `native keyboard inject failed: ${err?.message || err} — falling back to powershell`);
     }
   }
-  // PowerShell SendKeys fallback.
-  let psKeys;
+  // PowerShell SendKeys fallback — type character by character at ~120 WPM.
   if (kind === 'type') {
-    const escaped = String(text).replace(/'/g, "''");
-    psKeys = `[System.Windows.Forms.SendKeys]::SendWait('${escaped}')`;
+    const chars = String(text).split('');
+    const ps = chars
+      .map((c) => {
+        const escaped = c.replace(/'/g, "''");
+        return `[System.Windows.Forms.SendKeys]::SendWait('${escaped}');Start-Sleep -m 83;`;
+      })
+      .join('');
+    const { spawn } = require('node:child_process');
+    return new Promise((resolve) => {
+      const p = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], { windowsHide: true });
+      let done = false;
+      const finish = (ok) => { if (!done) { done = true; resolve(ok); } };
+      p.on('close', () => finish(true));
+      p.on('error', (err) => { log.info('[toolbox]', `keyboard inject failed: ${err?.message || err}`); finish(false); });
+      setTimeout(() => { try { p.kill(); } catch { /* gone */ } finish(false); }, 8000);
+    });
   } else if (kind === 'press') {
     const mods = Array.isArray(modifier) ? modifier : (modifier ? [modifier] : []);
     const modMap = { ctrl: '^', alt: '%', shift: '+' };
     const modChars = mods.map((m) => modMap[m] || m).join('');
-    psKeys = `[System.Windows.Forms.SendKeys]::SendWait('${modChars}{${String(key)}}')`;
-  } else {
-    return false;
+    const ps = `[System.Windows.Forms.SendKeys]::SendWait('${modChars}{${String(key)}}')`;
+    const { spawn } = require('node:child_process');
+    return new Promise((resolve) => {
+      const p = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], { windowsHide: true });
+      let done = false;
+      const finish = (ok) => { if (!done) { done = true; resolve(ok); } };
+      p.on('close', () => finish(true));
+      p.on('error', (err) => { log.info('[toolbox]', `keyboard inject failed: ${err?.message || err}`); finish(false); });
+      setTimeout(() => { try { p.kill(); } catch { /* gone */ } finish(false); }, 8000);
+    });
   }
-  const ps = `Add-Type -AssemblyName System.Windows.Forms; ${psKeys}`;
-  const { spawn } = require('node:child_process');
-  return new Promise((resolve) => {
-    const p = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], { windowsHide: true });
-    let done = false;
-    const finish = (ok) => { if (!done) { done = true; resolve(ok); } };
-    p.on('close', () => finish(true));
-    p.on('error', (err) => { log.info('[toolbox]', `keyboard inject failed: ${err?.message || err}`); finish(false); });
-    setTimeout(() => { try { p.kill(); } catch { /* gone */ } finish(false); }, 8000);
-  });
+  return false;
 }
 
 // Two-phase click (user design): mark the model's chosen point on the

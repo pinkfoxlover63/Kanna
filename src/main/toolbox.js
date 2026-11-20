@@ -546,7 +546,7 @@ const SENSITIVE_TOOLS = [
     isSensitive: true,
     isInput: true,
     allowed: inputAllowed,
-    description: "type text at the current cursor position — args {\"text\": \"hello\"}; only when the user's latest message asks to type or write something; per-use consent (allow-once), one input action per turn, nothing is typed until the user confirms the dialog",
+    description: "type text at the current cursor position — args {\"text\": \"hello\"}; types at ~120 WPM (one char at a time, looks natural); only when the user's latest message asks to type or write something; per-use consent (allow-once), one input action per turn, nothing is typed until the user confirms the dialog",
     args: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'], additionalProperties: false },
     run: (args) => runUseInput({ kind: 'type', args }),
   },
