@@ -494,10 +494,18 @@ function showInputOverlay({ mode, disp, fromX, fromY, toX, toY, durMs }) {
     </script></body></html>`;
   const overlayFile = path.join(app.getPath('temp'), 'kanna-input-overlay.html');
   fs.writeFileSync(overlayFile, html);
-  ov.loadFile(overlayFile)
-    .then(() => { if (inputOverlayWin && !inputOverlayWin.isDestroyed()) inputOverlayWin.showInactive(); })
-    .catch((err) => log.info('[toolbox]', `input overlay load failed: ${err?.message || err}`));
-  return ov;
+  // Resolve once the overlay is actually visible, so callers can wait for it.
+  return new Promise((resolve) => {
+    ov.loadFile(overlayFile)
+      .then(() => {
+        if (inputOverlayWin && !inputOverlayWin.isDestroyed()) inputOverlayWin.showInactive();
+        resolve(ov);
+      })
+      .catch((err) => {
+        log.info('[toolbox]', `input overlay load failed: ${err?.message || err}`);
+        resolve(null);
+      });
+  });
 }
 
 // The toolbox hook. Flow: overlay cursor animates to the target (MOVE_MS),
@@ -517,7 +525,7 @@ async function runInputAction({ kind, x, y, button, double: dbl, text, key, modi
       const fromY = Math.max(0, Math.min(disp.bounds.height - 1, start.y - disp.bounds.y));
       // Typing duration: ~83 ms per char at 120 WPM, min 500 ms.
       const typeMs = kind === 'type' ? Math.max(500, String(text || '').length * 83) : 800;
-      showInputOverlay({ mode: 'keyboard', disp, fromX, fromY, toX: fromX, toY: fromY, durMs: typeMs });
+      await showInputOverlay({ mode: 'keyboard', disp, fromX, fromY, toX: fromX, toY: fromY, durMs: typeMs });
       const ok = await injectKeyboard({ kind, text, key, modifier });
       await new Promise((r) => setTimeout(r, 250));
       if (inputAbort) {
@@ -537,7 +545,7 @@ async function runInputAction({ kind, x, y, button, double: dbl, text, key, modi
     const fromY = Math.max(0, Math.min(disp.bounds.height - 1, start.y - disp.bounds.y));
     const toX = Math.max(0, Math.min(disp.bounds.width - 1, x / s - disp.bounds.x));
     const toY = Math.max(0, Math.min(disp.bounds.height - 1, y / s - disp.bounds.y));
-    showInputOverlay({ mode: 'mouse', disp, fromX, fromY, toX, toY, durMs: MOVE_MS });
+    await showInputOverlay({ mode: 'mouse', disp, fromX, fromY, toX, toY, durMs: MOVE_MS });
     await new Promise((r) => setTimeout(r, MOVE_MS + DWELL_MS));
     if (inputAbort) {
       killInputOverlay();
