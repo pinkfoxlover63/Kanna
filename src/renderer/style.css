@@ -629,6 +629,12 @@ header {
 }
 .consent-sub { margin: 0 0 10px; font-size: 11.5px; line-height: 1.5; color: #c7bfe0; }
 .consent-sub code { font-size: 11px; }
+.full-access-warning {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--accent);
+}
 .consent-row { display: flex; gap: 6px; }
 .consent-row button {
   flex: 1;
